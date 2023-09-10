@@ -3,7 +3,6 @@ package loki
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"strings"
@@ -18,7 +17,7 @@ import (
 var hostname string
 
 func getHostname() string {
-	content, err := ioutil.ReadFile("/etc/host_hostname")
+	content, err := os.ReadFile("/etc/host_hostname")
 	if err == nil && len(content) > 0 {
 		hostname = strings.TrimRight(string(content), "\r\n")
 	} else {
