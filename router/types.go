@@ -4,6 +4,7 @@ package router
 import (
 	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -58,13 +59,15 @@ type Message struct {
 
 // Route represents what subset of logs should go where
 type Route struct {
-	ID            string            `json:"id"`
-	FilterID      string            `json:"filter_id,omitempty"`
-	FilterName    string            `json:"filter_name,omitempty"`
-	FilterSources []string          `json:"filter_sources,omitempty"`
-	FilterLabels  []string          `json:"filter_labels,omitempty"`
-	Adapter       string            `json:"adapter"`
-	Address       string            `json:"address"`
+	ID            string   `json:"id"`
+	FilterID      string   `json:"filter_id,omitempty"`
+	FilterName    string   `json:"filter_name,omitempty"`
+	FilterSources []string `json:"filter_sources,omitempty"`
+	FilterLabels  []string `json:"filter_labels,omitempty"`
+	Adapter       string   `json:"adapter"`
+	Address       string   `json:"address"`
+	Path          string   `json:"path"`
+	User          *url.Userinfo
 	Options       map[string]string `json:"options,omitempty"`
 	adapter       LogAdapter
 	closed        bool

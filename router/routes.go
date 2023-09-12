@@ -94,7 +94,9 @@ func (rm *RouteManager) AddFromURI(uri string) error {
 	}
 	r := &Route{
 		Address: u.Host,
+		Path:    u.Path,
 		Adapter: u.Scheme,
+		User:    u.User,
 		Options: make(map[string]string),
 	}
 	if u.RawQuery != "" {
