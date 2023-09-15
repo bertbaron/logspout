@@ -3,6 +3,7 @@ package loki
 
 import (
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"os/signal"
@@ -39,7 +40,7 @@ type LokiAdapter struct {
 }
 
 func logger(v ...interface{}) {
-	fmt.Println(v...)
+	log.Println(v...)
 }
 
 // NewLokiAdapter creates a LokiAdapter.
@@ -55,7 +56,7 @@ func NewLokiAdapter(route *router.Route) (router.LogAdapter, error) {
 		Host:   route.Address,
 		Path:   path,
 	}
-	fmt.Printf("Using Loki url: %s\n", urlObject.Redacted())
+	log.Printf("Using Loki url: %s\n", urlObject.Redacted())
 	client, err := lokiclient.NewWithDefaults(urlObject.String(), baseLabels, logger)
 	if err != nil {
 		return nil, err
