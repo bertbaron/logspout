@@ -3,7 +3,7 @@ package loki
 
 import (
 	"fmt"
-	"io/ioutil"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -18,7 +18,7 @@ import (
 var hostname string
 
 func getHostname() string {
-	content, err := ioutil.ReadFile("/etc/host_hostname")
+	content, err := os.ReadFile("/etc/host_hostname")
 	if err == nil && len(content) > 0 {
 		hostname = strings.TrimRight(string(content), "\r\n")
 	} else {
@@ -45,9 +45,18 @@ func logger(v ...interface{}) {
 // NewLokiAdapter creates a LokiAdapter.
 func NewLokiAdapter(route *router.Route) (router.LogAdapter, error) {
 	baseLabels := model.LabelSet{}
-	lokiURL := "http://" + route.Address + "/api/prom/push"
-	fmt.Printf("Using Loki url: %s\n", lokiURL)
-	client, err := lokiclient.NewWithDefaults(lokiURL, baseLabels, logger)
+	path := "/api/prom/push"
+	if route.Path != "" {
+		path = route.Path
+	}
+	urlObject := &url.URL{
+		Scheme: scheme(route.Adapter),
+		User:   route.User,
+		Host:   route.Address,
+		Path:   path,
+	}
+	fmt.Printf("Using Loki url: %s\n", urlObject.Redacted())
+	client, err := lokiclient.NewWithDefaults(urlObject.String(), baseLabels, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -87,4 +96,12 @@ func (a *LokiAdapter) Stream(logstream chan *router.Message) {
 func waitExit(client *lokiclient.Client, c chan os.Signal) {
 	<-c
 	client.Stop()
+}
+
+func scheme(adapter string) string {
+	parts := strings.Split(adapter, "+")
+	if len(parts) > 1 {
+		return parts[1]
+	}
+	return "http"
 }
