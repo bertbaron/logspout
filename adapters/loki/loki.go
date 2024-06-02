@@ -75,7 +75,6 @@ func NewLokiAdapter(route *router.Route) (router.LogAdapter, error) {
 func (a *LokiAdapter) Stream(logstream chan *router.Message) {
 	defer a.client.Stop()
 
-	lastLineTime := time.Now()
 	for m := range logstream {
 		labels := model.LabelSet{
 			"nodename":       hostname,
@@ -89,7 +88,7 @@ func (a *LokiAdapter) Stream(logstream chan *router.Message) {
 
 		line := strings.TrimSpace(m.Data)
 		if len(line) > 0 {
-			a.client.Handle(labels, lastLineTime, line)
+			a.client.Handle(labels, time.Now(), line)
 		}
 	}
 }
