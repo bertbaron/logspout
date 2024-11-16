@@ -5,6 +5,7 @@ import (
 	_ "github.com/gliderlabs/logspout/adapters/loki"
 	_ "github.com/gliderlabs/logspout/adapters/multiline"
 	_ "github.com/gliderlabs/logspout/adapters/raw"
+	_ "github.com/gliderlabs/logspout/adapters/splunk"
 	_ "github.com/gliderlabs/logspout/adapters/syslog"
 	_ "github.com/gliderlabs/logspout/healthcheck"
 	_ "github.com/gliderlabs/logspout/httpstream"
