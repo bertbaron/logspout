@@ -3,21 +3,16 @@ module github.com/gliderlabs/logspout
 go 1.13
 
 require (
-	github.com/Graylog2/go-gelf v0.0.0-20170811154226-7ebf4f536d8f
+	github.com/Graylog2/go-gelf v0.0.0-20180125164251-1832d8546a9f
 	github.com/Microsoft/hcsshim v0.8.14 // indirect
-	github.com/Sirupsen/logrus v0.10.1-0.20160601113210-f3cfb454f4c2 // indirect
 	github.com/containerd/cgroups v0.0.0-20210114181951-8a68de567b68 // indirect
 	github.com/containerd/containerd v1.4.3 // indirect
 	github.com/containerd/continuity v0.0.0-20201208142359-180525291bb7 // indirect
 	github.com/docker/docker v20.10.3+incompatible // indirect
-	github.com/docker/engine-api v0.3.2-0.20160708123604-98348ad6f9c8 // indirect
 	github.com/fsouza/go-dockerclient v1.7.0
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/gorilla/context v0.0.0-20160525203319-aed02d124ae4 // indirect
 	github.com/gorilla/mux v1.8.0
-	github.com/hashicorp/go-cleanhttp v0.0.0-20160407174126-ad28ea4487f0 // indirect
-	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/livepeer/loki-client v0.0.0-20190403184403-48157aae2826
 	github.com/looplab/logspout-logstash v0.0.0-20171130125839-68a4e47e757d
 	github.com/moby/term v0.0.0-20201216013528-df9cb8a40635 // indirect

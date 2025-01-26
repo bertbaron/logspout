@@ -2,22 +2,23 @@
 package gelf
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 	"log"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/Graylog2/go-gelf/gelf"
-	"github.com/gliderlabs/logspout/router"
 	"github.com/gliderlabs/logspout/cfg"
+	"github.com/gliderlabs/logspout/router"
 )
 
 var hostname string
 
 func getHostname() string {
-	content, err := ioutil.ReadFile("/etc/host_hostname")
+	content, err := os.ReadFile("/etc/host_hostname")
 	if err == nil && len(content) > 0 {
 		hostname = strings.TrimRight(string(content), "\r\n")
 	} else {
@@ -31,34 +32,43 @@ func init() {
 	router.AdapterFactories.Register(NewGelfAdapter, "gelf")
 }
 
-// GelfAdapter is an adapter that streams UDP JSON to Graylog
-type GelfAdapter struct {
-	writer *gelf.Writer
+// Adapter is an adapter that streams UDP JSON to Graylog
+type Adapter struct {
+	writer gelf.Writer
 	route  *router.Route
 }
 
-// NewGelfAdapter creates a GelfAdapter with UDP as the default transport.
+// NewGelfAdapter creates an Adapter with UDP as the default transport.
 func NewGelfAdapter(route *router.Route) (router.LogAdapter, error) {
-	_, found := router.AdapterTransports.Lookup(route.AdapterTransport("udp"))
-	if !found {
-		return nil, errors.New("unable to find adapter: " + route.Adapter)
-	}
-
-	gelfWriter, err := gelf.NewWriter(route.Address)
+	gelfWriter, err := gelfWriter(route)
 	if err != nil {
 		return nil, err
 	}
 
-	return &GelfAdapter{
+	return &Adapter{
 		route:  route,
 		writer: gelfWriter,
 	}, nil
 }
 
+func gelfWriter(route *router.Route) (gelf.Writer, error) {
+	transport := route.AdapterTransport("udp")
+	switch transport {
+	case "udp":
+		return gelf.NewUDPWriter(route.Address)
+	case "tcp":
+		return gelf.NewTCPWriter(route.Address)
+	case "tls":
+		tlsConfig := &tls.Config{}
+		return gelf.NewTLSWriter(route.Address, tlsConfig)
+	}
+	return nil, errors.New("unknown transport: " + transport)
+}
+
 // Stream implements the router.LogAdapter interface.
-func (a *GelfAdapter) Stream(logstream chan *router.Message) {
+func (a *Adapter) Stream(logstream chan *router.Message) {
 	for message := range logstream {
-		m := &GelfMessage{message}
+		m := &Message{message}
 		level := gelf.LOG_INFO
 		if m.Source == "stderr" {
 			level = gelf.LOG_ERR
@@ -74,15 +84,10 @@ func (a *GelfAdapter) Stream(logstream chan *router.Message) {
 			Host:     hostname,
 			Short:    m.Message.Data,
 			TimeUnix: float64(m.Message.Time.UnixNano()/int64(time.Millisecond)) / 1000.0,
-			Level:    level,
+			Level:    int32(level),
 			RawExtra: extra,
 		}
-		// 	ContainerId:    m.Container.ID,
-		// 	ContainerImage: m.Container.Config.Image,
-		// 	ContainerName:  m.Container.Name,
-		// }
 
-		// here be message write.
 		if err := a.writer.WriteMessage(&msg); err != nil {
 			log.Println("Graylog:", err)
 			continue
@@ -90,11 +95,11 @@ func (a *GelfAdapter) Stream(logstream chan *router.Message) {
 	}
 }
 
-type GelfMessage struct {
+type Message struct {
 	*router.Message
 }
 
-func (m GelfMessage) getExtraFields() (json.RawMessage, error) {
+func (m Message) getExtraFields() (json.RawMessage, error) {
 
 	extra := map[string]interface{}{
 		"_container_id":   m.Container.ID,
