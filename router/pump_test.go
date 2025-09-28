@@ -287,3 +287,20 @@ func TestPumpBacklog(t *testing.T) {
 		t.Errorf("expected backlog() to return 'false'")
 	}
 }
+
+func TestPumpStripAnsiSetting(t *testing.T) {
+	os.Setenv("STRIP_ANSI", "true")
+	defer os.Unsetenv("STRIP_ANSI")
+	if stripAnsi != true {
+		t.Errorf("expected stripAnsi() to return 'true'")
+	}
+}
+
+func TestStripAnsiCodes(t *testing.T) {
+	input := "\x1b[31mThis is red text\x1b[0m and this is normal text"
+	expected := "This is red text and this is normal text"
+	output := stripAnsiCodes(input)
+	if output != expected {
+		t.Errorf("expected '%s' got '%s'", expected, output)
+	}
+}

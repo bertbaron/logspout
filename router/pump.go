@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +27,8 @@ const (
 )
 
 var (
-	allowTTY bool
+	allowTTY  bool
+	stripAnsi bool
 )
 
 func init() {
@@ -35,6 +37,7 @@ func init() {
 		routes: make(map[chan *update]struct{}),
 	}
 	setAllowTTY()
+	setStripAnsi()
 	LogRouters.Register(pump, defaultPumpName)
 	Jobs.Register(pump, defaultPumpName)
 }
@@ -54,6 +57,13 @@ func setAllowTTY() {
 		allowTTY = true
 	}
 	debug("setting allowTTY to:", allowTTY)
+}
+
+func setStripAnsi() {
+	if s := cfg.GetEnvDefault("STRIP_ANSI", ""); s == trueString {
+		stripAnsi = true
+	}
+	debug("setting stripAnsi to:", stripAnsi)
 }
 
 func assert(err error, context string) {
@@ -384,6 +394,9 @@ func newContainerPump(container *docker.Container, stdout, stderr io.Reader) *co
 				}
 				return
 			}
+			if stripAnsi {
+				line = stripAnsiCodes(line)
+			}
 			cp.send(&Message{
 				Data:      strings.TrimSuffix(line, "\n"),
 				Container: container,
@@ -418,4 +431,10 @@ func (cp *containerPump) remove(logstream chan *Message) {
 	cp.Lock()
 	defer cp.Unlock()
 	delete(cp.logstreams, logstream)
+}
+
+var ansiRegexp = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsiCodes(s string) string {
+	return ansiRegexp.ReplaceAllString(s, "")
 }
