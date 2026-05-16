@@ -27,7 +27,7 @@ func RoutesAPI() http.Handler {
 			http.NotFound(w, req)
 			return
 		}
-		w.Write(append(marshal(route), '\n'))
+		_, _ = w.Write(append(marshal(route), '\n'))
 	}).Methods("GET")
 
 	r.HandleFunc("/routes/{id}", func(w http.ResponseWriter, req *http.Request) {
@@ -40,7 +40,7 @@ func RoutesAPI() http.Handler {
 	r.HandleFunc("/routes", func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 		rts, _ := routes.GetAll()
-		w.Write(append(marshal(rts), '\n'))
+		_, _ = w.Write(append(marshal(rts), '\n'))
 	}).Methods("GET")
 
 	r.HandleFunc("/routes", func(w http.ResponseWriter, req *http.Request) {
@@ -56,7 +56,7 @@ func RoutesAPI() http.Handler {
 		}
 		w.Header().Add("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		w.Write(append(marshal(route), '\n'))
+		_, _ = w.Write(append(marshal(route), '\n'))
 	}).Methods("POST")
 
 	return r

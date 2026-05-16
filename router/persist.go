@@ -3,7 +3,6 @@ package router
 import (
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -32,7 +31,7 @@ func (fs RouteFileStore) Get(id string) (*Route, error) {
 
 // GetAll returns a slice of *Route for the entire RouteFileStore
 func (fs RouteFileStore) GetAll() ([]*Route, error) {
-	files, err := ioutil.ReadDir(string(fs))
+	files, err := os.ReadDir(string(fs))
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +50,7 @@ func (fs RouteFileStore) GetAll() ([]*Route, error) {
 
 // Add writes a marshaled *Route to the RouteFileStore
 func (fs RouteFileStore) Add(route *Route) error {
-	return ioutil.WriteFile(fs.Filename(route.ID), marshal(route), 0600)
+	return os.WriteFile(fs.Filename(route.ID), marshal(route), 0600)
 }
 
 // Remove removes route from the RouteFileStore based on id

@@ -4,7 +4,7 @@ VERSION=$(shell cat VERSION)
 MAX_IMAGE_SIZE := 40000000
 
 GOBIN := $(shell go env GOPATH | awk -F ":" '{ print $$1 }')/bin
-GOLANGCI_LINT_VERSION := v1.27.0
+GOLANGCI_LINT_VERSION := v2.12.2
 
 ifeq ($(shell uname), Darwin)
 	XARGS_ARG="-L1"
@@ -39,7 +39,7 @@ build-custom:
 
 lint-requirements:
 ifeq ($(shell which golangci-lint), )
-	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(GOBIN) $(GOLANGCI_LINT_VERSION)
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN) $(GOLANGCI_LINT_VERSION)
 endif
 
 lint: lint-requirements

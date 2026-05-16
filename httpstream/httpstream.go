@@ -137,7 +137,7 @@ func httpStreamer(w http.ResponseWriter, req *http.Request, logstream chan *rout
 			continue
 		}
 		if usejson { //nolint:nestif
-			w.Write(append(marshal(logline), '\n'))
+			_, _ = w.Write(append(marshal(logline), '\n'))
 		} else {
 			if multi {
 				name := normalName(logline.Container.Name)
@@ -145,17 +145,17 @@ func httpStreamer(w http.ResponseWriter, req *http.Request, logstream chan *rout
 					nameWidth = len(name)
 				}
 				if usecolor {
-					w.Write([]byte(fmt.Sprintf(
+					_, _ = fmt.Fprintf(w,
 						"%s%"+strconv.Itoa(nameWidth)+"s|%s\x1b[0m\n",
 						colors.Get(name), name, logline.Data,
-					)))
+					)
 				} else {
-					w.Write([]byte(fmt.Sprintf(
+					_, _ = fmt.Fprintf(w,
 						"%"+strconv.Itoa(nameWidth)+"s|%s\n", name, logline.Data,
-					)))
+					)
 				}
 			} else {
-				w.Write(append([]byte(logline.Data), '\n'))
+				_, _ = w.Write(append([]byte(logline.Data), '\n'))
 			}
 		}
 		w.(http.Flusher).Flush()

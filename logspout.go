@@ -50,14 +50,14 @@ func main() {
 		w.Init(os.Stdout, 0, 8, 0, '\t', 0)
 		fmt.Fprintln(w, "#   ADAPTER\tADDRESS\tCONTAINERS\tSOURCES\tOPTIONS") //nolint:errcheck
 		for _, route := range routes {
-			fmt.Fprintf(w, "#   %s\t%s\t%s\t%s\t%s\n",
+			_, _ = fmt.Fprintf(w, "#   %s\t%s\t%s\t%s\t%s\n",
 				route.Adapter,
 				route.Address,
 				route.FilterID+route.FilterName+strings.Join(route.FilterLabels, ","),
 				strings.Join(route.FilterSources, ","),
 				route.Options)
 		}
-		w.Flush()
+		_ = w.Flush()
 	} else {
 		log.Println("# routes  : none")
 	}

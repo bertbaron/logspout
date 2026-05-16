@@ -2,7 +2,6 @@
 package loki
 
 import (
-	"fmt"
 	"log"
 	"net/url"
 	"os"
@@ -61,7 +60,7 @@ func NewLokiAdapter(route *router.Route) (router.LogAdapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go waitExit(client, c)
 
@@ -83,12 +82,14 @@ func (a *LokiAdapter) Stream(logstream chan *router.Message) {
 			"image_id":       m.Container.Image,
 			"image_name":     m.Container.Config.Image,
 			"command":        strings.Join(m.Container.Config.Cmd[:], " "),
-			"created":        fmt.Sprintf("%s", m.Container.Created),
+			"created":        m.Container.Created.String(),
 		}
 
 		line := strings.TrimSpace(m.Data)
 		if len(line) > 0 {
-			a.client.Handle(labels, time.Now(), line)
+			if err := a.client.Handle(labels, time.Now(), line); err != nil { //nolint:staticcheck
+			log.Println("Loki:", err)
+		}
 		}
 	}
 }

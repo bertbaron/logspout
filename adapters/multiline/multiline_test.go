@@ -228,5 +228,5 @@ func TestContainerEnv(t *testing.T) {
 }
 
 func replaceNewLines(str string) string {
-	return strings.Replace(str, "\n", "\\n", -1)
+	return strings.ReplaceAll(str, "\n", "\\n")
 }

@@ -3,11 +3,11 @@ package splunk
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -78,14 +78,14 @@ func getDurationParameter(
 	}
 }
 
-func dial(netw, addr string) (net.Conn, error) {
-	dial, err := net.Dial(netw, addr)
+func dialContext(ctx context.Context, netw, addr string) (net.Conn, error) {
+	conn, err := (&net.Dialer{}).DialContext(ctx, netw, addr)
 	if err != nil {
-		debug("splunk: new dial", dial, err, netw, addr)
+		debug("splunk: new dial", conn, err, netw, addr)
 	} else {
-		debug("splunk: new dial", dial, netw, addr)
+		debug("splunk: new dial", conn, netw, addr)
 	}
-	return dial, err
+	return conn, err
 }
 
 // SplunkAdapter is an adapter that POSTs logs to an HTTP endpoint
@@ -118,7 +118,7 @@ func NewSplunkAdapter(route *router.Route) (router.LogAdapter, error) {
 	endpointUrl := fmt.Sprintf("https://%s%s", route.Address, path)
 	debug("splunk: url:", endpointUrl)
 	transport := &http.Transport{}
-	transport.Dial = dial
+	transport.DialContext = dialContext
 
 	// Figure out if we need a proxy
 	defaultProxyUrl := ""
@@ -264,7 +264,7 @@ func (a *SplunkAdapter) flushHttp(reason string) {
 		if os.Getenv("SPLUNK_DOCKER_LABELS") != "" {
 			splunkMessageEvent.Labels = make(map[string]string)
 			for label, value := range m.Container.Config.Labels {
-				splunkMessageEvent.Labels[strings.Replace(label, ".", "_", -1)] = value
+				splunkMessageEvent.Labels[strings.ReplaceAll(label, ".", "_")] = value
 			}
 		}
 		splunkMessage := SplunkMessage{
@@ -311,8 +311,8 @@ func (a *SplunkAdapter) flushHttp(reason string) {
 		// Make sure the entire response body is read so the HTTP
 		// connection can be reused
 		if response != nil {
-			io.Copy(ioutil.Discard, response.Body)
-			response.Body.Close()
+			_, _ = io.Copy(io.Discard, response.Body)
+			_ = response.Body.Close()
 		}
 
 		// Bookkeeping, logging
