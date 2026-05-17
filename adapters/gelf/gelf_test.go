@@ -2,6 +2,7 @@ package gelf
 
 import (
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,23 +38,33 @@ func newTestContainer() *docker.Container {
 	}
 }
 
+// streamAndWait runs adapter.Stream in a goroutine, sends msgs, closes the
+// stream, and waits for Stream to return. Reading mock after this call is safe.
+func streamAndWait(adapter *Adapter, msgs ...*router.Message) {
+	stream := make(chan *router.Message, len(msgs))
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		adapter.Stream(stream)
+	}()
+	for _, m := range msgs {
+		stream <- m
+	}
+	close(stream)
+	wg.Wait()
+}
+
 func TestGelfStreamStdout(t *testing.T) {
 	mock := &mockGelfWriter{}
 	adapter := &Adapter{writer: mock}
-	stream := make(chan *router.Message, 1)
 
-	go adapter.Stream(stream)
-
-	stream <- &router.Message{
+	streamAndWait(adapter, &router.Message{
 		Container: newTestContainer(),
 		Data:      "hello world",
 		Source:    "stdout",
 		Time:      time.Now(),
-	}
-	close(stream)
-
-	// Give the goroutine time to process.
-	time.Sleep(50 * time.Millisecond)
+	})
 
 	if len(mock.messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(mock.messages))
@@ -73,19 +84,13 @@ func TestGelfStreamStdout(t *testing.T) {
 func TestGelfStreamStderr(t *testing.T) {
 	mock := &mockGelfWriter{}
 	adapter := &Adapter{writer: mock}
-	stream := make(chan *router.Message, 1)
 
-	go adapter.Stream(stream)
-
-	stream <- &router.Message{
+	streamAndWait(adapter, &router.Message{
 		Container: newTestContainer(),
 		Data:      "error output",
 		Source:    "stderr",
 		Time:      time.Now(),
-	}
-	close(stream)
-
-	time.Sleep(50 * time.Millisecond)
+	})
 
 	if len(mock.messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(mock.messages))

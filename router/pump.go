@@ -342,7 +342,7 @@ func (p *LogsPump) Route(route *Route, logstream chan *Message) {
 		p.mu.Lock()
 		delete(p.routes, updates)
 		p.mu.Unlock()
-		route.closed = true
+		route.closed.Store(true)
 	}()
 	for {
 		select {

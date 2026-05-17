@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
@@ -70,7 +71,7 @@ type Route struct {
 	User          *url.Userinfo
 	Options       map[string]string `json:"options,omitempty"`
 	adapter       LogAdapter
-	closed        bool
+	closed        atomic.Bool
 	closer        chan struct{}
 	closerRcv     <-chan struct{} // used instead of closer when set
 }
