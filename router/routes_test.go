@@ -53,7 +53,7 @@ func TestRouterNoDuplicateIds(t *testing.T) {
 	}
 	Routes.Add(route2)
 
-	if !route1.closed {
+	if !route1.closed.Load() {
 		t.Errorf("route1 was not closed after route2 added.")
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -208,7 +207,7 @@ func TestSyslogReconnectOnClose(t *testing.T) {
 }
 
 func TestHostnameDoesNotHaveLineFeed(t *testing.T) {
-	if err := ioutil.WriteFile(hostHostnameFilename, []byte(badHostnameContent), 0777); err != nil {
+	if err := os.WriteFile(hostHostnameFilename, []byte(badHostnameContent), 0777); err != nil {
 		t.Fatal(err)
 	}
 	testHostname := getHostname()

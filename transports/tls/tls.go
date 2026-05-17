@@ -1,4 +1,4 @@
-// +build go1.8
+//go:build go1.8
 
 package tls
 
@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -82,7 +81,7 @@ func rawTLSAdapter(route *router.Route) (r router.LogAdapter, err error) {
 func (t *tlsTransport) Dial(addr string, options map[string]string) (conn net.Conn, err error) {
 	// at this point, if our trust store is empty, there is no point of continuing
 	// since it would be impossible to successfully validate any x509 server certificates
-	if len(clientTLSConfig.RootCAs.Subjects()) < 1 {
+	if clientTLSConfig.RootCAs != nil && len(clientTLSConfig.RootCAs.Subjects()) < 1 { //nolint:staticcheck
 		err = fmt.Errorf("FATAL: TLS CA trust store is empty! Can not trust any TLS endpoints: tls://%s", addr)
 		return
 	}
@@ -131,7 +130,7 @@ func createTLSConfig() (tlsConfig *tls.Config, err error) {
 		for _, certFilePath := range certFilePaths {
 			// each pem file may contain more than one certficate
 			var certBytes []byte
-			certBytes, err = ioutil.ReadFile(certFilePath)
+			certBytes, err = os.ReadFile(certFilePath)
 			if err != nil {
 				return
 			}

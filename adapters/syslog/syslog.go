@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"log/syslog"
 	"net"
@@ -69,7 +68,7 @@ func getFormat() (Format, error) {
 }
 
 func getHostname() string {
-	content, err := ioutil.ReadFile("/etc/host_hostname")
+	content, err := os.ReadFile("/etc/host_hostname")
 	if err == nil && len(content) > 0 {
 		hostname = strings.TrimRight(string(content), "\r\n")
 	} else {
@@ -405,7 +404,7 @@ func (m *Message) Render(format Format, tmpl *FieldTemplates) ([]byte, error) {
 
 // Priority returns a syslog.Priority based on the message source
 func (m *Message) Priority() syslog.Priority {
-	switch m.Message.Source {
+	switch m.Source {
 	case "stdout":
 		return syslog.LOG_USER | syslog.LOG_INFO
 	case "stderr":
@@ -422,12 +421,12 @@ func (m *Message) Hostname() string {
 
 // Timestamp returns the message's syslog formatted timestamp
 func (m *Message) Timestamp() string {
-	return m.Message.Time.Format(time.RFC3339)
+	return m.Time.Format(time.RFC3339)
 }
 
 // ContainerName returns the message's container name
 func (m *Message) ContainerName() string {
-	return m.Message.Container.Name[1:]
+	return m.Container.Name[1:]
 }
 
 // ContainerNameSplitN returns the message's container name sliced at most "n" times using "sep"

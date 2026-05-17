@@ -3,7 +3,7 @@ package router
 import (
 	"bytes"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -30,7 +30,7 @@ func (rt *FakeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	rt.requests = append(rt.requests, r)
 	res := &http.Response{
 		StatusCode: rt.status,
-		Body:       ioutil.NopCloser(body),
+		Body:       io.NopCloser(body),
 		Header:     make(http.Header),
 	}
 	for k, v := range rt.header {
@@ -289,8 +289,13 @@ func TestPumpBacklog(t *testing.T) {
 }
 
 func TestPumpStripAnsiSetting(t *testing.T) {
+	original := stripAnsi
+	defer func() { stripAnsi = original }()
+
+	stripAnsi = false
 	os.Setenv("STRIP_ANSI", "true")
 	defer os.Unsetenv("STRIP_ANSI")
+	setStripAnsi()
 	if stripAnsi != true {
 		t.Errorf("expected stripAnsi() to return 'true'")
 	}

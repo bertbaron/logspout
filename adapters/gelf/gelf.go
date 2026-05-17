@@ -82,8 +82,8 @@ func (a *Adapter) Stream(logstream chan *router.Message) {
 		msg := gelf.Message{
 			Version:  "1.1",
 			Host:     hostname,
-			Short:    m.Message.Data,
-			TimeUnix: float64(m.Message.Time.UnixNano()/int64(time.Millisecond)) / 1000.0,
+			Short:    m.Data,
+			TimeUnix: float64(m.Time.UnixNano()/int64(time.Millisecond)) / 1000.0,
 			Level:    int32(level),
 			RawExtra: extra,
 		}

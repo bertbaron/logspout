@@ -4,7 +4,7 @@ VERSION=$(shell cat VERSION)
 MAX_IMAGE_SIZE := 40000000
 
 GOBIN := $(shell go env GOPATH | awk -F ":" '{ print $$1 }')/bin
-GOLANGCI_LINT_VERSION := v1.27.0
+GOLANGCI_LINT_VERSION := v2.12.2
 
 ifeq ($(shell uname), Darwin)
 	XARGS_ARG="-L1"
@@ -39,7 +39,7 @@ build-custom:
 
 lint-requirements:
 ifeq ($(shell which golangci-lint), )
-	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(GOBIN) $(GOLANGCI_LINT_VERSION)
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN) $(GOLANGCI_LINT_VERSION)
 endif
 
 lint: lint-requirements
@@ -63,6 +63,18 @@ test: build-dev
 
 test-direct:
 	go test -p 1 -v $(TEST_ARGS) $(GOPACKAGES) $(TESTRUN)
+
+# Integration tests: connect to Docker via DOCKER_HOST (or auto-detects Colima
+# socket), start real containers, and verify log forwarding end-to-end.
+test-integration:
+	go test -tags integration -p 1 -v -timeout 120s ./integration/...
+
+# Journal integration tests: cross-compile for the Colima VM (linux/arm64),
+# copy the binary into the VM, and run it there so it can access journald.
+test-integration-journal:
+	GOARCH=arm64 GOOS=linux \
+		go test -c -tags 'integration journal' -o /tmp/logspout-inttest ./integration/...
+	colima ssh -- /tmp/logspout-inttest -test.v -test.timeout 120s
 
 test-image-size:
 	@if [ $(shell docker inspect -f '{{ .Size }}' $(NAME):$(VERSION)) -gt $(MAX_IMAGE_SIZE) ]; then \

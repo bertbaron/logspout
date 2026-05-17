@@ -245,10 +245,7 @@ func (p *LogsPump) pumpLogs(event *docker.APIEvents, backlog bool, inactivityTim
 
 	// RawTerminal with container Tty=false injects binary headers into
 	// the log stream that show up as garbage unicode characters
-	rawTerminal := false
-	if allowTTY && container.Config.Tty {
-		rawTerminal = true
-	}
+	rawTerminal := allowTTY && container.Config.Tty
 	outrd, outwr := io.Pipe()
 	errrd, errwr := io.Pipe()
 	p.pumps[id] = newContainerPump(container, outrd, errrd)
@@ -291,8 +288,8 @@ func (p *LogsPump) pumpLogs(event *docker.APIEvents, backlog bool, inactivityTim
 			}
 
 			debug("pump.pumpLogs():", id, "dead")
-			outwr.Close()
-			errwr.Close()
+			_ = outwr.Close()
+			_ = errwr.Close()
 			p.mu.Lock()
 			delete(p.pumps, id)
 			p.mu.Unlock()
@@ -345,7 +342,7 @@ func (p *LogsPump) Route(route *Route, logstream chan *Message) {
 		p.mu.Lock()
 		delete(p.routes, updates)
 		p.mu.Unlock()
-		route.closed = true
+		route.closed.Store(true)
 	}()
 	for {
 		select {
