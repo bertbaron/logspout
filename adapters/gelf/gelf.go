@@ -69,6 +69,9 @@ func gelfWriter(route *router.Route) (gelf.Writer, error) {
 func (a *Adapter) Stream(logstream chan *router.Message) {
 	for message := range logstream {
 		m := &Message{message}
+		if m.Data == "" {
+			continue
+		}
 		level := gelf.LOG_INFO
 		if m.Source == "stderr" {
 			level = gelf.LOG_ERR

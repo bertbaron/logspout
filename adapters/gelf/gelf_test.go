@@ -100,6 +100,22 @@ func TestGelfStreamStderr(t *testing.T) {
 	}
 }
 
+func TestGelfStreamSkipsEmptyMessages(t *testing.T) {
+	mock := &mockGelfWriter{}
+	adapter := &Adapter{writer: mock}
+
+	streamAndWait(adapter, &router.Message{
+		Container: newTestContainer(),
+		Data:      "",
+		Source:    "stdout",
+		Time:      time.Now(),
+	})
+
+	if len(mock.messages) != 0 {
+		t.Fatalf("expected no GELF message for empty log line, got %d", len(mock.messages))
+	}
+}
+
 func TestGelfGetExtraFields(t *testing.T) {
 	container := newTestContainer()
 	msg := Message{&router.Message{
