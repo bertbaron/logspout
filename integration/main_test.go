@@ -38,6 +38,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	// Select the appropriate pump (docker vs journal) before any init() runs.
+	setupLogSource()
+
 	// Configure Docker endpoint.
 	if h := dockerHost(); h != "" {
 		os.Setenv("DOCKER_HOST", h) //nolint:errcheck

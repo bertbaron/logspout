@@ -70,11 +70,13 @@ test-integration:
 	go test -tags integration -p 1 -v -timeout 120s ./integration/...
 
 # Journal integration tests: cross-compile for the Colima VM (linux/arm64),
-# copy the binary into the VM, and run it there so it can access journald.
+# copy the binary into the VM via virtiofs,
+# and run it there with sudo so journalctl has journal-read permissions.
 test-integration-journal:
+	mkdir -p $(HOME)/tmp
 	GOARCH=arm64 GOOS=linux \
-		go test -c -tags 'integration journal' -o /tmp/logspout-inttest ./integration/...
-	colima ssh -- /tmp/logspout-inttest -test.v -test.timeout 120s
+		go test -c -tags 'integration journal' -o $(HOME)/tmp/logspout-inttest ./integration/...
+	colima ssh -- sudo env LOG_SOURCE=journal $(HOME)/tmp/logspout-inttest -test.v -test.timeout 120s -test.run TestJournald
 
 test-image-size:
 	@if [ $(shell docker inspect -f '{{ .Size }}' $(NAME):$(VERSION)) -gt $(MAX_IMAGE_SIZE) ]; then \

@@ -17,14 +17,18 @@ import (
 
 // dockerHost returns the Docker endpoint to use for integration tests.
 // It prefers DOCKER_HOST from the environment and falls back to the colima
-// socket (~/.config/colima/default/docker.sock) if it exists.
+// socket, checking both the XDG config path and the legacy ~/.colima path.
 func dockerHost() string {
 	if h := os.Getenv("DOCKER_HOST"); h != "" {
 		return h
 	}
-	colimaSocket := filepath.Join(os.Getenv("HOME"), ".config/colima/default/docker.sock")
-	if _, err := os.Stat(colimaSocket); err == nil {
-		return "unix://" + colimaSocket
+	for _, candidate := range []string{
+		filepath.Join(os.Getenv("HOME"), ".config/colima/default/docker.sock"),
+		filepath.Join(os.Getenv("HOME"), ".colima/default/docker.sock"),
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return "unix://" + candidate
+		}
 	}
 	return ""
 }

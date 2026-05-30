@@ -32,6 +32,12 @@ var (
 )
 
 func init() {
+	setAllowTTY()
+	setStripAnsi()
+	if os.Getenv("LOG_SOURCE") == "journal" {
+		// JournalPump (journal_pump.go) is used instead; skip Docker pump registration.
+		return
+	}
 	pump := &LogsPump{
 		pumps:  make(map[string]*containerPump),
 		routes: make(map[chan *update]struct{}),
