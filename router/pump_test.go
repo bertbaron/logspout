@@ -151,7 +151,6 @@ func TestPumpIgnoreContainerAllowTTYTrue(t *testing.T) {
 	os.Setenv("ALLOW_TTY", "true")
 	defer os.Unsetenv("ALLOW_TTY")
 
-	setAllowTTY()
 	containers := []struct {
 		in  *docker.Config
 		out bool
@@ -289,15 +288,10 @@ func TestPumpBacklog(t *testing.T) {
 }
 
 func TestPumpStripAnsiSetting(t *testing.T) {
-	original := stripAnsi
-	defer func() { stripAnsi = original }()
-
-	stripAnsi = false
 	os.Setenv("STRIP_ANSI", "true")
 	defer os.Unsetenv("STRIP_ANSI")
-	setStripAnsi()
-	if stripAnsi != true {
-		t.Errorf("expected stripAnsi() to return 'true'")
+	if !stripANSIEnabled() {
+		t.Errorf("expected stripANSIEnabled() to return 'true'")
 	}
 }
 

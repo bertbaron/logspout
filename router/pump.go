@@ -27,8 +27,8 @@ const (
 )
 
 var (
-	allowTTY  bool
-	stripAnsi bool
+	allowTTYEnvKey  = "ALLOW_TTY"
+	stripANSIEnvKey = "STRIP_ANSI"
 )
 
 func init() {
@@ -36,8 +36,6 @@ func init() {
 		pumps:  make(map[string]*containerPump),
 		routes: make(map[chan *update]struct{}),
 	}
-	setAllowTTY()
-	setStripAnsi()
 	LogRouters.Register(pump, defaultPumpName)
 	Jobs.Register(pump, defaultPumpName)
 }
@@ -52,18 +50,16 @@ func backlog() bool {
 	return os.Getenv("BACKLOG") == trueString
 }
 
-func setAllowTTY() {
-	if t := cfg.GetEnvDefault("ALLOW_TTY", ""); t == trueString {
-		allowTTY = true
-	}
-	debug("setting allowTTY to:", allowTTY)
+func allowTTYEnabled() bool {
+	enabled := cfg.GetEnvDefault(allowTTYEnvKey, "") == trueString
+	debug("setting allowTTY to:", enabled)
+	return enabled
 }
 
-func setStripAnsi() {
-	if s := cfg.GetEnvDefault("STRIP_ANSI", ""); s == trueString {
-		stripAnsi = true
-	}
-	debug("setting stripAnsi to:", stripAnsi)
+func stripANSIEnabled() bool {
+	enabled := cfg.GetEnvDefault(stripANSIEnvKey, "") == trueString
+	debug("setting stripAnsi to:", enabled)
+	return enabled
 }
 
 func assert(err error, context string) {
@@ -127,7 +123,7 @@ func ignoreContainer(container *docker.Container) bool {
 }
 
 func ignoreContainerTTY(container *docker.Container) bool {
-	if container.Config.Tty && !allowTTY {
+	if container.Config.Tty && !allowTTYEnabled() {
 		return true
 	}
 	return false
@@ -245,7 +241,7 @@ func (p *LogsPump) pumpLogs(event *docker.APIEvents, backlog bool, inactivityTim
 
 	// RawTerminal with container Tty=false injects binary headers into
 	// the log stream that show up as garbage unicode characters
-	rawTerminal := allowTTY && container.Config.Tty
+	rawTerminal := allowTTYEnabled() && container.Config.Tty
 	outrd, outwr := io.Pipe()
 	errrd, errwr := io.Pipe()
 	p.pumps[id] = newContainerPump(container, outrd, errrd)
@@ -391,7 +387,7 @@ func newContainerPump(container *docker.Container, stdout, stderr io.Reader) *co
 				}
 				return
 			}
-			if stripAnsi {
+			if stripANSIEnabled() {
 				line = stripAnsiCodes(line)
 			}
 			cp.send(&Message{

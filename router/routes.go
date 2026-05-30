@@ -210,19 +210,15 @@ func (rm *RouteManager) Name() string {
 
 // Setup configures the RouteManager
 func (rm *RouteManager) Setup() error {
-	var uris string
-	if os.Getenv("ROUTE_URIS") != "" {
-		uris = os.Getenv("ROUTE_URIS")
-	}
-	if len(os.Args) > 1 {
-		uris = os.Args[1]
-	}
-	if uris != "" {
-		for _, uri := range strings.Split(uris, ",") {
-			err := rm.AddFromURI(uri)
-			if err != nil {
-				return err
-			}
+	return rm.SetupWithArgs(os.Args[1:], nil)
+}
+
+// SetupWithArgs configures routes from either explicit route URIs or the
+// legacy environment/CLI inputs when no explicit routes are provided.
+func (rm *RouteManager) SetupWithArgs(args []string, explicitURIs []string) error {
+	for _, uri := range resolveRouteURIs(args, explicitURIs) {
+		if err := rm.AddFromURI(uri); err != nil {
+			return err
 		}
 	}
 
@@ -231,4 +227,22 @@ func (rm *RouteManager) Setup() error {
 		return rm.Load(RouteFileStore(persistPath))
 	}
 	return nil
+}
+
+func resolveRouteURIs(args []string, explicitURIs []string) []string {
+	if explicitURIs != nil {
+		return explicitURIs
+	}
+
+	var uris string
+	if env := os.Getenv("ROUTE_URIS"); env != "" {
+		uris = env
+	}
+	if len(args) > 0 {
+		uris = args[0]
+	}
+	if uris == "" {
+		return nil
+	}
+	return strings.Split(uris, ",")
 }

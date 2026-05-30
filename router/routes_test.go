@@ -57,3 +57,33 @@ func TestRouterNoDuplicateIds(t *testing.T) {
 		t.Errorf("route1 was not closed after route2 added.")
 	}
 }
+
+func TestRouteManagerSetupWithArgsUsesExplicitRoutes(t *testing.T) {
+	AdapterFactories.Register(newDummyAdapter, "setupadapter")
+	defer AdapterFactories.Unregister("setupadapter")
+
+	t.Setenv("ROUTE_URIS", "setupadapter://env-only")
+	t.Setenv("ROUTESPATH", t.TempDir()+"/missing")
+
+	rm := &RouteManager{routes: make(map[string]*Route)}
+	err := rm.SetupWithArgs([]string{"setupadapter://cli-only"}, []string{
+		"setupadapter://explicit-target?filter.name=comma,value",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	routes, err := rm.GetAll()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 route, got %d", len(routes))
+	}
+	if routes[0].Address != "explicit-target" {
+		t.Fatalf("expected explicit route address, got %q", routes[0].Address)
+	}
+	if routes[0].FilterName != "comma,value" {
+		t.Fatalf("expected unsplit filter.name, got %q", routes[0].FilterName)
+	}
+}
