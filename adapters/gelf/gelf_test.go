@@ -188,3 +188,46 @@ func TestGelfNewAdapterUnknownTransport(t *testing.T) {
 		t.Error("expected error for unknown transport, got nil")
 	}
 }
+
+// TestGelfAdapterResolvesHostnameAtCreation is the regression test for the
+// init-order bug. The Home Assistant launcher sets SYSLOG_HOSTNAME inside
+// main(), which Go runs AFTER every package init(). Resolving the hostname in
+// init() (the old behavior) froze it to the "{{.Container.Config.Hostname}}"
+// default before the launcher could set the configured value, so that literal
+// template string was shipped as the GELF source. The adapter must read
+// SYSLOG_HOSTNAME when it is created instead.
+func TestGelfAdapterResolvesHostnameAtCreation(t *testing.T) {
+	t.Setenv("SYSLOG_HOSTNAME", "myhost.example.com")
+
+	route := &router.Route{Address: "127.0.0.1:12201"} // default udp transport
+	adapter, err := NewGelfAdapter(route)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := adapter.(*Adapter).hostname
+	if got != "myhost.example.com" {
+		t.Fatalf("expected hostname resolved from SYSLOG_HOSTNAME at creation, got %q", got)
+	}
+}
+
+// TestGelfStreamUsesAdapterHostname verifies the per-adapter hostname is stamped
+// on every emitted message's Host (the GELF source) field.
+func TestGelfStreamUsesAdapterHostname(t *testing.T) {
+	mock := &mockGelfWriter{}
+	adapter := &Adapter{writer: mock, hostname: "myhost.example.com"}
+
+	streamAndWait(adapter, &router.Message{
+		Container: newTestContainer(),
+		Data:      "hello world",
+		Source:    "stdout",
+		Time:      time.Now(),
+	})
+
+	if len(mock.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(mock.messages))
+	}
+	if mock.messages[0].Host != "myhost.example.com" {
+		t.Errorf("expected Host='myhost.example.com', got '%s'", mock.messages[0].Host)
+	}
+}
