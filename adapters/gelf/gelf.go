@@ -15,27 +15,28 @@ import (
 	"github.com/gliderlabs/logspout/router"
 )
 
-var hostname string
-
+// getHostname resolves the GELF source hostname. It must be called when an
+// adapter is created (NewGelfAdapter) rather than at package init: the Home
+// Assistant launcher sets SYSLOG_HOSTNAME inside main(), which runs after all
+// package init() functions, so reading it at init time would always miss the
+// configured value and fall back to the default below.
 func getHostname() string {
 	content, err := os.ReadFile("/etc/host_hostname")
 	if err == nil && len(content) > 0 {
-		hostname = strings.TrimRight(string(content), "\r\n")
-	} else {
-		hostname = cfg.GetEnvDefault("SYSLOG_HOSTNAME", "{{.Container.Config.Hostname}}")
+		return strings.TrimRight(string(content), "\r\n")
 	}
-	return hostname
+	return cfg.GetEnvDefault("SYSLOG_HOSTNAME", "{{.Container.Config.Hostname}}")
 }
 
 func init() {
-	hostname = getHostname()
 	router.AdapterFactories.Register(NewGelfAdapter, "gelf")
 }
 
 // Adapter is an adapter that streams UDP JSON to Graylog
 type Adapter struct {
-	writer gelf.Writer
-	route  *router.Route
+	writer   gelf.Writer
+	route    *router.Route
+	hostname string
 }
 
 // NewGelfAdapter creates an Adapter with UDP as the default transport.
@@ -46,8 +47,9 @@ func NewGelfAdapter(route *router.Route) (router.LogAdapter, error) {
 	}
 
 	return &Adapter{
-		route:  route,
-		writer: gelfWriter,
+		route:    route,
+		writer:   gelfWriter,
+		hostname: getHostname(),
 	}, nil
 }
 
@@ -84,7 +86,7 @@ func (a *Adapter) Stream(logstream chan *router.Message) {
 
 		msg := gelf.Message{
 			Version:  "1.1",
-			Host:     hostname,
+			Host:     a.hostname,
 			Short:    m.Data,
 			TimeUnix: float64(m.Time.UnixNano()/int64(time.Millisecond)) / 1000.0,
 			Level:    int32(level),
