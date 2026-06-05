@@ -15,27 +15,23 @@ import (
 	"github.com/livepeer/loki-client/model"
 )
 
-var hostname string
-
 func getHostname() string {
 	content, err := os.ReadFile("/etc/host_hostname")
 	if err == nil && len(content) > 0 {
-		hostname = strings.TrimRight(string(content), "\r\n")
-	} else {
-		hostname = cfg.GetEnvDefault("SYSLOG_HOSTNAME", "{{.Container.Config.Hostname}}")
+		return strings.TrimRight(string(content), "\r\n")
 	}
-	return hostname
+	return cfg.GetEnvDefault("SYSLOG_HOSTNAME", "{{.Container.Config.Hostname}}")
 }
 
 func init() {
-	hostname = getHostname()
 	router.AdapterFactories.Register(NewLokiAdapter, "loki")
 }
 
 // LokiAdapter is an adapter that streams logs to Loki.
 type LokiAdapter struct {
-	route  *router.Route
-	client *lokiclient.Client
+	hostname string
+	route    *router.Route
+	client   *lokiclient.Client
 }
 
 func logger(v ...interface{}) {
@@ -65,8 +61,9 @@ func NewLokiAdapter(route *router.Route) (router.LogAdapter, error) {
 	go waitExit(client, c)
 
 	return &LokiAdapter{
-		route:  route,
-		client: client,
+		hostname: getHostname(),
+		route:    route,
+		client:   client,
 	}, nil
 }
 
@@ -76,7 +73,7 @@ func (a *LokiAdapter) Stream(logstream chan *router.Message) {
 
 	for m := range logstream {
 		labels := model.LabelSet{
-			"nodename":       hostname,
+			"nodename":       a.hostname,
 			"container_id":   m.Container.ID,
 			"container_name": m.Container.Name[1:],
 			"image_id":       m.Container.Image,
@@ -88,8 +85,8 @@ func (a *LokiAdapter) Stream(logstream chan *router.Message) {
 		line := strings.TrimSpace(m.Data)
 		if len(line) > 0 {
 			if err := a.client.Handle(labels, time.Now(), line); err != nil { //nolint:staticcheck
-			log.Println("Loki:", err)
-		}
+				log.Println("Loki:", err)
+			}
 		}
 	}
 }

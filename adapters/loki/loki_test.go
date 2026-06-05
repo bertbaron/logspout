@@ -3,6 +3,8 @@ package loki
 import (
 	"os"
 	"testing"
+
+	"github.com/gliderlabs/logspout/router"
 )
 
 func TestSchemeDefault(t *testing.T) {
@@ -49,5 +51,26 @@ func TestGetHostnameDefault(t *testing.T) {
 		if got != expected {
 			t.Errorf("expected default template '%s', got '%s'", expected, got)
 		}
+	}
+}
+
+func TestNewLokiAdapterUsesRuntimeHostname(t *testing.T) {
+	if _, err := os.Stat("/etc/host_hostname"); err == nil {
+		t.Skip("/etc/host_hostname exists; runtime env precedence cannot be asserted on this host")
+	}
+
+	t.Setenv("SYSLOG_HOSTNAME", "runtime.example.com")
+
+	adapter, err := NewLokiAdapter(&router.Route{
+		Adapter: "loki",
+		Address: "127.0.0.1:3100",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error creating adapter: %v", err)
+	}
+
+	lokiAdapter := adapter.(*LokiAdapter)
+	if got := lokiAdapter.hostname; got != "runtime.example.com" {
+		t.Fatalf("expected runtime hostname, got %q", got)
 	}
 }

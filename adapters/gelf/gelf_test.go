@@ -2,6 +2,7 @@ package gelf
 
 import (
 	"encoding/json"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -186,5 +187,39 @@ func TestGelfNewAdapterUnknownTransport(t *testing.T) {
 	_, err := NewGelfAdapter(route)
 	if err == nil {
 		t.Error("expected error for unknown transport, got nil")
+	}
+}
+
+func TestGelfNewAdapterUsesRuntimeHostname(t *testing.T) {
+	if _, err := os.Stat("/etc/host_hostname"); err == nil {
+		t.Skip("/etc/host_hostname exists; runtime env precedence cannot be asserted on this host")
+	}
+
+	t.Setenv("SYSLOG_HOSTNAME", "runtime.example.com")
+
+	adapter, err := NewGelfAdapter(&router.Route{
+		Adapter: "gelf+udp",
+		Address: "127.0.0.1:12201",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error creating adapter: %v", err)
+	}
+
+	mock := &mockGelfWriter{}
+	gelfAdapter := adapter.(*Adapter)
+	gelfAdapter.writer = mock
+
+	streamAndWait(gelfAdapter, &router.Message{
+		Container: newTestContainer(),
+		Data:      "hello world",
+		Source:    "stdout",
+		Time:      time.Now(),
+	})
+
+	if len(mock.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(mock.messages))
+	}
+	if got := mock.messages[0].Host; got != "runtime.example.com" {
+		t.Fatalf("expected runtime hostname, got %q", got)
 	}
 }
