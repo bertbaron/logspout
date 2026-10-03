@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	github.com/Graylog2/go-gelf v0.0.0-20180125164251-1832d8546a9f
+	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/fsouza/go-dockerclient v1.13.1
 	github.com/gorilla/mux v1.8.1
 	github.com/livepeer/loki-client v0.0.0-20190403184403-48157aae2826

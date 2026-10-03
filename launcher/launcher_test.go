@@ -132,9 +132,36 @@ func TestRunWithRunnerPassesRoutesAndManagedEnvironment(t *testing.T) {
 	}
 }
 
-func TestRunWithRunnerFailsWithoutSocket(t *testing.T) {
+func TestRunWithRunnerUsesJournalWithoutSocket(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "stale")
 	optionsPath := filepath.Join(t.TempDir(), "options.json")
 	err := os.WriteFile(optionsPath, []byte(`{"routes":["raw+tcp://sink:1514"]}`), 0600)
+	if err != nil {
+		t.Fatalf("write options: %v", err)
+	}
+
+	journalUsed := false
+	err = RunWithRunner(Options{
+		DockerSocketPath: filepath.Join(t.TempDir(), "missing.sock"),
+		OptionsPath:      optionsPath,
+		UseJournal:       func() { journalUsed = true },
+	}, func(opts runner.Options) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("RunWithRunner() error = %v", err)
+	}
+	if !journalUsed {
+		t.Fatal("expected journal log source without docker socket")
+	}
+	if got := os.Getenv("DOCKER_HOST"); got != "" {
+		t.Fatalf("expected DOCKER_HOST to be cleared, got %q", got)
+	}
+}
+
+func TestRunWithRunnerFailsWhenDockerRequestedWithoutSocket(t *testing.T) {
+	optionsPath := filepath.Join(t.TempDir(), "options.json")
+	err := os.WriteFile(optionsPath, []byte(`{"env":[{"name":"LOG_SOURCE","value":"docker"}]}`), 0600)
 	if err != nil {
 		t.Fatalf("write options: %v", err)
 	}
@@ -147,5 +174,12 @@ func TestRunWithRunnerFailsWithoutSocket(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected missing socket error")
+	}
+}
+
+func TestSelectLogSourceRejectsUnknownValue(t *testing.T) {
+	config := Config{Env: []EnvironmentEntry{{Name: "LOG_SOURCE", Value: "files"}}}
+	if _, err := selectLogSource(config, "/nonexistent"); err == nil {
+		t.Fatal("expected error for unknown LOG_SOURCE")
 	}
 }

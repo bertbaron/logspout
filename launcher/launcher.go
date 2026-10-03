@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 
+	"github.com/gliderlabs/logspout/journal"
+	"github.com/gliderlabs/logspout/router"
 	"github.com/gliderlabs/logspout/runner"
 )
 
@@ -20,6 +23,10 @@ const (
 	// DefaultRouteStorePath is where persisted route files live in the addon container.
 	DefaultRouteStorePath = "/data/routes"
 	defaultHostname       = "homeassistant"
+
+	logSourceKey     = "LOG_SOURCE"
+	logSourceDocker  = "docker"
+	logSourceJournal = "journal"
 )
 
 var envNameRegexp = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -62,6 +69,8 @@ type Options struct {
 	OptionsPath      string
 	RouteStorePath   string
 	Version          string
+	// UseJournal switches logspout to the journal log source. Defaults to router.UseJournalPump with journal.Open.
+	UseJournal func()
 }
 
 // Run loads the Home Assistant config, configures the environment, and starts Logspout.
@@ -72,16 +81,22 @@ func Run(opts Options) error {
 // RunWithRunner is like Run but allows tests to inject a fake runtime bootstrap.
 func RunWithRunner(opts Options, start func(runner.Options) error) error {
 	socketPath := valueOrDefault(opts.DockerSocketPath, DefaultDockerSocketPath)
-	if err := validateDockerSocket(socketPath); err != nil {
-		return err
-	}
 
 	config, err := LoadConfig(valueOrDefault(opts.OptionsPath, DefaultOptionsPath))
 	if err != nil {
 		return err
 	}
 
-	env, err := BuildEnvironment(config, socketPath, valueOrDefault(opts.RouteStorePath, DefaultRouteStorePath))
+	logSource, err := selectLogSource(config, socketPath)
+	if err != nil {
+		return err
+	}
+	dockerSocket := socketPath
+	if logSource == logSourceJournal {
+		dockerSocket = ""
+	}
+
+	env, err := BuildEnvironment(config, dockerSocket, valueOrDefault(opts.RouteStorePath, DefaultRouteStorePath))
 	if err != nil {
 		return err
 	}
@@ -95,6 +110,15 @@ func RunWithRunner(opts Options, start func(runner.Options) error) error {
 		if err := os.Setenv(key, value); err != nil {
 			return fmt.Errorf("set %s: %w", key, err)
 		}
+	}
+
+	if logSource == logSourceJournal {
+		log.Println("# log source: journald")
+		useJournal := opts.UseJournal
+		if useJournal == nil {
+			useJournal = func() { router.UseJournalPump(journal.Open) }
+		}
+		useJournal()
 	}
 
 	return start(runner.Options{
@@ -153,10 +177,12 @@ func BuildEnvironment(config Config, dockerSocketPath, routeStorePath string) (m
 	}
 
 	env := map[string]string{
-		"DOCKER_HOST":        "unix://" + dockerSocketPath,
 		"INACTIVITY_TIMEOUT": DefaultInactivityTimeout,
 		"ROUTESPATH":         routeStorePath,
 		"SYSLOG_HOSTNAME":    config.Hostname,
+	}
+	if dockerSocketPath != "" {
+		env["DOCKER_HOST"] = "unix://" + dockerSocketPath
 	}
 	if config.StripANSI {
 		env["STRIP_ANSI"] = "true"
@@ -165,6 +191,40 @@ func BuildEnvironment(config Config, dockerSocketPath, routeStorePath string) (m
 		env[entry.Name] = entry.Value
 	}
 	return env, nil
+}
+
+// selectLogSource returns the log source to use. Home Assistant mounts the Docker socket only when
+// protection mode is disabled, so without the socket the journal is used. LOG_SOURCE in the add-on env
+// option or the process environment overrides this.
+func selectLogSource(config Config, socketPath string) (string, error) {
+	requested := os.Getenv(logSourceKey)
+	for _, entry := range config.Env {
+		if entry.Name == logSourceKey {
+			requested = entry.Value
+		}
+	}
+
+	switch requested {
+	case "":
+		if hasDockerSocket(socketPath) {
+			return logSourceDocker, nil
+		}
+		return logSourceJournal, nil
+	case logSourceJournal:
+		return logSourceJournal, nil
+	case logSourceDocker:
+		if err := validateDockerSocket(socketPath); err != nil {
+			return "", err
+		}
+		return logSourceDocker, nil
+	default:
+		return "", fmt.Errorf("%s %q is invalid, expected %q or %q", logSourceKey, requested, logSourceDocker, logSourceJournal)
+	}
+}
+
+func hasDockerSocket(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode()&os.ModeSocket != 0
 }
 
 func validateDockerSocket(path string) error {

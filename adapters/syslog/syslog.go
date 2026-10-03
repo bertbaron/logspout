@@ -369,6 +369,12 @@ func (m *Message) Render(format Format, tmpl *FieldTemplates) ([]byte, error) {
 		return nil, err
 	}
 
+	// Pid 0 means unknown: the journal log source has no container pid
+	pidValue := pid.String()
+	if pidValue == "0" {
+		pidValue = "-"
+	}
+
 	structuredData := new(bytes.Buffer)
 	if err := tmpl.structuredData.Execute(structuredData, m); err != nil {
 		return nil, err
@@ -388,14 +394,14 @@ func (m *Message) Render(format Format, tmpl *FieldTemplates) ([]byte, error) {
 		// - the TAG field must not exceed 48 characters
 		// - the PROCID field must not exceed 128 characters
 		fmt.Fprintf(buf, "<%s>1 %s %.255s %.48s %.128s - %s %s\n",
-			priority, timestamp, hostname, tag, pid, structuredData, data,
+			priority, timestamp, hostname, tag, pidValue, structuredData, data,
 		)
 	case Rfc3164Format:
 		// notes from RFC:
 		// - the entire message must be <= 1024 bytes
 		// - the TAG field must not exceed 32 characters
 		fmt.Fprintf(buf, "<%s>%s %s %.32s[%s]: %s\n",
-			priority, timestamp, hostname, tag, pid, data,
+			priority, timestamp, hostname, tag, pidValue, data,
 		)
 	}
 

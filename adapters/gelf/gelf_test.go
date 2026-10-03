@@ -223,3 +223,28 @@ func TestGelfNewAdapterUsesRuntimeHostname(t *testing.T) {
 		t.Fatalf("expected runtime hostname, got %q", got)
 	}
 }
+
+func TestGelfGetExtraFieldsOmitsUnknownDockerFields(t *testing.T) {
+	container := newTestContainer()
+	container.Image = ""
+	container.Config.Cmd = nil
+	container.Created = time.Time{}
+	msg := Message{&router.Message{Container: container, Data: "test", Source: "stdout", Time: time.Now()}}
+
+	raw, err := msg.getExtraFields()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var extra map[string]interface{}
+	if err := json.Unmarshal(raw, &extra); err != nil {
+		t.Fatalf("failed to unmarshal extra fields: %v", err)
+	}
+	for _, key := range []string{"_image_id", "_command", "_created"} {
+		if _, ok := extra[key]; ok {
+			t.Errorf("expected %s to be omitted", key)
+		}
+	}
+	if extra["_container_name"] != "testcontainer" {
+		t.Errorf("expected _container_name to be kept, got '%v'", extra["_container_name"])
+	}
+}

@@ -76,10 +76,17 @@ func (a *LokiAdapter) Stream(logstream chan *router.Message) {
 			"nodename":       a.hostname,
 			"container_id":   m.Container.ID,
 			"container_name": m.Container.Name[1:],
-			"image_id":       m.Container.Image,
 			"image_name":     m.Container.Config.Image,
-			"command":        strings.Join(m.Container.Config.Cmd[:], " "),
-			"created":        m.Container.Created.String(),
+		}
+		// The journal log source does not know the following fields, so they are omitted there
+		if m.Container.Image != "" {
+			labels["image_id"] = m.Container.Image
+		}
+		if len(m.Container.Config.Cmd) > 0 {
+			labels["command"] = strings.Join(m.Container.Config.Cmd, " ")
+		}
+		if !m.Container.Created.IsZero() {
+			labels["created"] = m.Container.Created.String()
 		}
 
 		line := strings.TrimSpace(m.Data)

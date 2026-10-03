@@ -104,10 +104,17 @@ func (m Message) getExtraFields() (json.RawMessage, error) {
 	extra := map[string]interface{}{
 		"_container_id":   m.Container.ID,
 		"_container_name": m.Container.Name[1:], // might be better to use strings.TrimLeft() to remove the first /
-		"_image_id":       m.Container.Image,
 		"_image_name":     m.Container.Config.Image,
-		"_command":        strings.Join(m.Container.Config.Cmd[:], " "),
-		"_created":        m.Container.Created,
+	}
+	// The journal log source does not know the following fields, so they are omitted there
+	if m.Container.Image != "" {
+		extra["_image_id"] = m.Container.Image
+	}
+	if len(m.Container.Config.Cmd) > 0 {
+		extra["_command"] = strings.Join(m.Container.Config.Cmd, " ")
+	}
+	if !m.Container.Created.IsZero() {
+		extra["_created"] = m.Container.Created
 	}
 	for name, label := range m.Container.Config.Labels {
 		if len(name) > 5 && strings.ToLower(name[0:5]) == "gelf_" {
