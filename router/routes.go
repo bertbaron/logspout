@@ -41,6 +41,11 @@ func (rm *RouteManager) Load(persistor RouteStore) error {
 	}
 	for _, route := range routes {
 		if err = rm.Add(route); err != nil {
+			var clash *nameClashError
+			if errors.As(err, &clash) {
+				log.Printf("ERROR: skipping stored route %s (%s %s): %v", route.ID, route.Adapter, route.Address, err)
+				continue
+			}
 			return err
 		}
 	}
@@ -92,12 +97,18 @@ func (rm *RouteManager) AddFromURI(uri string) error {
 	if err != nil {
 		return err
 	}
+	name, explicit, err := nameFromURL(u)
+	if err != nil {
+		return err
+	}
 	r := &Route{
-		Address: u.Host,
-		Path:    u.Path,
-		Adapter: u.Scheme,
-		User:    u.User,
-		Options: make(map[string]string),
+		Name:         name,
+		NameExplicit: explicit,
+		Address:      u.Host,
+		Path:         u.Path,
+		Adapter:      u.Scheme,
+		User:         u.User,
+		Options:      make(map[string]string),
 	}
 	if u.RawQuery != "" {
 		params, err := url.ParseQuery(u.RawQuery)
@@ -131,10 +142,23 @@ func (rm *RouteManager) Add(route *Route) error {
 	if !found {
 		return errors.New("bad adapter: " + route.Adapter)
 	}
+	name, explicit := route.Name, route.NameExplicit
+	if name == "" {
+		name, explicit = route.AdapterType(), false
+	} else if !ValidRouteName(name) {
+		return fmt.Errorf("invalid route name %q", name)
+	} else if name != route.AdapterType() {
+		// API clients send a name without name_explicit.
+		explicit = true
+	}
+	if err := rm.checkName(route.ID, name, explicit); err != nil {
+		return err
+	}
 	adapter, err := factory(route)
 	if err != nil {
 		return err
 	}
+	route.Name, route.NameExplicit = name, explicit
 	if route.ID == "" {
 		h := sha1.New() //nolint:gosec
 		io.WriteString(h, strconv.Itoa(int(time.Now().UnixNano())))
@@ -157,6 +181,45 @@ func (rm *RouteManager) Add(route *Route) error {
 		go rm.route(route)
 	}
 	return nil
+}
+
+type nameClashError struct{ name string }
+
+func (e *nameClashError) Error() string {
+	return fmt.Sprintf("route name %q is used more than once, add a unique #name to the route URI", e.name)
+}
+
+// checkName rejects duplicates involving an explicit name. Two default names
+// only warn, to keep existing setups with several routes of one type working.
+// The caller must hold the lock.
+func (rm *RouteManager) checkName(routeID, name string, explicit bool) error {
+	clash := false
+	for id, other := range rm.routes {
+		if other.Name != name || id == routeID {
+			continue
+		}
+		if explicit || other.NameExplicit {
+			return &nameClashError{name: name}
+		}
+		clash = true
+	}
+	if clash {
+		log.Printf("warning: more than one route has the default name %q; add #name to the route URI so rules can target it", name)
+	}
+	return nil
+}
+
+// AmbiguousName reports whether more than one route has the given name.
+func (rm *RouteManager) AmbiguousName(name string) bool {
+	rm.Lock()
+	defer rm.Unlock()
+	n := 0
+	for _, r := range rm.routes {
+		if r.Name == name {
+			n++
+		}
+	}
+	return n > 1
 }
 
 func (rm *RouteManager) route(route *Route) {

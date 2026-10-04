@@ -65,6 +65,8 @@ type Message struct {
 // Route represents what subset of logs should go where
 type Route struct {
 	ID            string   `json:"id"`
+	Name          string   `json:"name,omitempty"`
+	NameExplicit  bool     `json:"name_explicit,omitempty"`
 	FilterID      string   `json:"filter_id,omitempty"`
 	FilterName    string   `json:"filter_name,omitempty"`
 	FilterSources []string `json:"filter_sources,omitempty"`

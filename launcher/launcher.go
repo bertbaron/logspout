@@ -144,6 +144,11 @@ func LoadConfig(path string) (Config, error) {
 	if err := config.Validate(); err != nil {
 		return Config{}, err
 	}
+	// Validate already passed, so this cannot fail.
+	ambiguous, _ := router.ValidateRouteNamesWithEnv(config.Routes, config.lookupEnv)
+	for _, name := range ambiguous {
+		log.Printf("warning: more than one route has the default name %q; add #name to the route URI so rules can target it", name)
+	}
 	return config, nil
 }
 
@@ -154,6 +159,9 @@ func (c Config) Validate() error {
 		if route == "" {
 			return fmt.Errorf("routes[%d] must not be empty", i)
 		}
+	}
+	if _, err := router.ValidateRouteNamesWithEnv(c.Routes, c.lookupEnv); err != nil {
+		return err
 	}
 	for i, entry := range c.Env {
 		if !envNameRegexp.MatchString(entry.Name) {
@@ -168,6 +176,17 @@ func (c Config) Validate() error {
 		seen[entry.Name] = struct{}{}
 	}
 	return nil
+}
+
+// lookupEnv resolves a variable like AddFromURI will see it at start-up: the
+// env option wins over the process environment.
+func (c Config) lookupEnv(name string) string {
+	for i := len(c.Env) - 1; i >= 0; i-- {
+		if c.Env[i].Name == name {
+			return c.Env[i].Value
+		}
+	}
+	return os.Getenv(name)
 }
 
 // BuildEnvironment returns the managed environment for launching Logspout.

@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gliderlabs/logspout/runner"
@@ -181,5 +182,84 @@ func TestSelectLogSourceRejectsUnknownValue(t *testing.T) {
 	config := Config{Env: []EnvironmentEntry{{Name: "LOG_SOURCE", Value: "files"}}}
 	if _, err := selectLogSource(config, "/nonexistent"); err == nil {
 		t.Fatal("expected error for unknown LOG_SOURCE")
+	}
+}
+
+func TestConfigValidateRouteNames(t *testing.T) {
+	tests := []struct {
+		name    string
+		routes  []string
+		wantErr bool
+	}{
+		{"no fragment", []string{"syslog://a:1", "gelf://b:2"}, false},
+		{"duplicate default allowed", []string{"syslog://a:1", "syslog://b:2"}, false},
+		{"duplicate explicit", []string{"syslog://a:1#x", "gelf://b:2#x"}, true},
+		{"invalid name", []string{"syslog://a:1#a b"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Config{Routes: tt.routes}.Validate()
+			if (err != nil) != tt.wantErr || (err != nil && !strings.Contains(err.Error(), "route name")) {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
+func runWithOptionsJSON(t *testing.T, body string) (runner.Options, bool, error) {
+	t.Helper()
+	optionsPath := filepath.Join(t.TempDir(), "options.json")
+	if err := os.WriteFile(optionsPath, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var got runner.Options
+	started := false
+	err := RunWithRunner(Options{
+		DockerSocketPath: filepath.Join(t.TempDir(), "missing.sock"),
+		OptionsPath:      optionsPath,
+		UseJournal:       func() {},
+	}, func(o runner.Options) error {
+		got, started = o, true
+		return nil
+	})
+	return got, started, err
+}
+
+func TestRunWithRunnerRouteNames(t *testing.T) {
+	tests := []struct {
+		name    string
+		routes  string
+		wantErr bool
+	}{
+		{"old options without fragments", `["syslog+tcp://a:514","syslog+tcp://b:514","gelf://g:12201"]`, false},
+		{"named routes", `["syslog+tcp://a:514#primary","syslog+tcp://b:514#backup"]`, false},
+		{"duplicate explicit", `["syslog://a:514#x","gelf://g:1#x"]`, true},
+		{"explicit equals other default", `["syslog://a:514","gelf://g:1#syslog"]`, true},
+		{"invalid", `["syslog://a:514#a b"]`, true},
+		{"empty fragment", `["syslog://a:514#"]`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, started, err := runWithOptionsJSON(t, `{"routes":`+tt.routes+`}`)
+			if (err != nil) != tt.wantErr || (err != nil && !strings.Contains(err.Error(), "route name")) {
+				t.Fatalf("err = %v", err)
+			}
+			if tt.wantErr && started {
+				t.Error("runner started despite invalid routes")
+			}
+			if !tt.wantErr && len(got.RouteURIs) == 0 {
+				t.Error("routes not passed on")
+			}
+		})
+	}
+}
+
+// The env option is applied after validation, so a fragment from env must give the same verdict in both places.
+func TestRunWithRunnerRouteNameFromEnvOption(t *testing.T) {
+	_, started, err := runWithOptionsJSON(t, `{
+		"routes":["syslog://a:514#${MY_ROUTE}","gelf://g:1#dup"],
+		"env":[{"name":"MY_ROUTE","value":"dup"}]}`)
+	if err == nil && started {
+		t.Error("duplicate explicit name via env option was not detected by the launcher")
 	}
 }
