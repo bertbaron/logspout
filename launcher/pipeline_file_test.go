@@ -22,7 +22,7 @@ func runWithRuleFile(t *testing.T, options string, content *string) string {
 			t.Fatal(err)
 		}
 	}
-	t.Setenv("PIPELINE_FILE", path)
+	options = withPipelineFile(t, path, options)
 	router.SetProcessor(nil)
 	t.Cleanup(func() { router.SetProcessor(nil) })
 
@@ -140,5 +140,67 @@ func TestRuleFileLogLines(t *testing.T) {
 	out = runWithRuleFile(t, `{"routes": ["gelf://g:12201"]}`, &file)
 	if n := strings.Count(out, "no-such-rule"); n != 1 {
 		t.Errorf("name logged %d times:\n%s", n, out)
+	}
+}
+
+func TestDebugPipelineOption(t *testing.T) {
+	for _, tt := range []struct {
+		env  string
+		want bool
+	}{{"", false}, {"true", true}, {"1", true}, {"false", false}, {"nonsense", false}} {
+		if got := pipelineOptionsFromEnv(func(k string) string {
+			if k == debugPipelineKey {
+				return tt.env
+			}
+			return ""
+		}).Debug; got != tt.want {
+			t.Errorf("DEBUG_PIPELINE=%q: %v", tt.env, got)
+		}
+	}
+}
+
+// DEBUG_PIPELINE is no rule: alone it installs nothing. With rules it traces.
+func TestDebugPipelineInvalidValueLogged(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	opts := pipelineOptionsFromEnv(func(k string) string {
+		if k == debugPipelineKey {
+			return "maybe"
+		}
+		return ""
+	})
+	if opts.Debug || !strings.Contains(buf.String(), "ERROR: DEBUG_PIPELINE") {
+		t.Errorf("debug=%v log %q", opts.Debug, buf.String())
+	}
+}
+
+func TestDebugPipelineFromEnvOption(t *testing.T) {
+	debug := `"env": [{"name": "DEBUG_PIPELINE", "value": "true"}]`
+	out := runWithRuleFile(t, `{"routes": ["gelf://g:12201"], `+debug+`}`, nil)
+	if router.CurrentProcessor() != nil || strings.Contains(out, "trace") {
+		t.Errorf("processor installed for DEBUG_PIPELINE alone: %s", out)
+	}
+
+	rules := "rules:\n  - name: g\n    when: { match: x }\n    drop: true\n"
+	var buf bytes.Buffer
+	out = runWithRuleFile(t, `{"routes": ["gelf://g:12201"], `+debug+`}`, &rules)
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	router.CurrentProcessor().Global(&router.Message{Data: "x", Source: "stdout"})
+	if !strings.Contains(buf.String(), `pipeline trace: global`) || !strings.Contains(buf.String(), "dropped=true") {
+		t.Errorf("no trace:\n%s", buf.String())
+	}
+}
+
+func TestManagedKeysCleared(t *testing.T) {
+	for _, k := range []string{"PIPELINE_FILE", "DEBUG_PIPELINE"} {
+		found := false
+		for _, m := range managedEnvironmentKeys {
+			found = found || m == k
+		}
+		if !found {
+			t.Errorf("%s is not managed", k)
+		}
 	}
 }

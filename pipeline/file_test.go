@@ -189,3 +189,36 @@ func TestParseFileStructuralErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestParseFileNullTarget(t *testing.T) {
+	res := ParseFile([]byte("targets:\n  syslog:\n"), testFileEnv)
+	if res.Err() != nil || res.Config == nil {
+		t.Fatalf("null target is an error: %v", res.Err())
+	}
+	if p, _, err := Build(res.Config.Apply(Options{})); err != nil || !p.Empty() {
+		t.Errorf("empty=%v err=%v", p.Empty(), err)
+	}
+	// The name is still checked.
+	if res := ParseFile([]byte("targets:\n  nope:\n"), testFileEnv); res.Err() == nil {
+		t.Error("unknown null target accepted")
+	}
+}
+
+func TestLoadFileSizeCap(t *testing.T) {
+	dir := t.TempDir()
+	write := func(n int) string {
+		p := filepath.Join(dir, "f.yaml")
+		data := []byte("# " + strings.Repeat("x", n-3) + "\n")
+		if err := os.WriteFile(p, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if res := LoadFile(write(MaxFileSize), testFileEnv); res.Err() != nil {
+		t.Errorf("file of exactly the maximum size: %v", res.Err())
+	}
+	res := LoadFile(write(MaxFileSize+1), testFileEnv)
+	if res.Err() == nil || !strings.Contains(res.Err().Error(), "file too large") || res.Config != nil {
+		t.Errorf("result %+v", res)
+	}
+}

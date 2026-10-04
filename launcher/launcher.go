@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/gliderlabs/logspout/journal"
@@ -30,6 +31,7 @@ const (
 	defaultRulesKey      = "DEFAULT_RULES"
 	excludeContainersKey = "EXCLUDE_CONTAINERS"
 	pipelineFileKey      = "PIPELINE_FILE"
+	debugPipelineKey     = "DEBUG_PIPELINE"
 
 	logSourceKey     = "LOG_SOURCE"
 	logSourceDocker  = "docker"
@@ -38,10 +40,12 @@ const (
 
 var envNameRegexp = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// DEFAULT_RULES and EXCLUDE_CONTAINERS are managed but not reserved: the env option may set them.
+// DEFAULT_RULES, EXCLUDE_CONTAINERS, PIPELINE_FILE and DEBUG_PIPELINE are managed but not reserved: the env option may set them.
 var managedEnvironmentKeys = []string{
 	defaultRulesKey,
 	excludeContainersKey,
+	pipelineFileKey,
+	debugPipelineKey,
 	"DOCKER_HOST",
 	"INACTIVITY_TIMEOUT",
 	"ROUTESPATH",
@@ -125,7 +129,7 @@ func RunWithRunner(opts Options, start func(runner.Options) error) error {
 	}
 
 	// The env option may also set DEFAULT_RULES and EXCLUDE_CONTAINERS, so build from the final environment.
-	installPipeline(config)
+	defer installPipeline(config).Stop()
 
 	if logSource == logSourceJournal {
 		log.Println("# log source: journald")
@@ -142,46 +146,22 @@ func RunWithRunner(opts Options, start func(runner.Options) error) error {
 	})
 }
 
-// installPipeline builds the pipeline from the environment and the rule file
-// and activates it. Without rules nothing is installed, so the pumps keep their
-// plain code path. A typo in the options or the file must never stop logging:
-// an invalid option or an invalid file is logged as an error and ignored, the
-// other settings stay active.
-func installPipeline(config Config) {
-	opts := pipelineOptionsFromEnv(os.Getenv)
-	opts = applyRuleFile(opts, config)
-	// Unknown disable_defaults names are warned about, with position, when the file is parsed.
-	p, _, err := pipeline.Build(opts)
-	if err != nil {
-		log.Printf("ERROR: pipeline disabled: %v", err)
-		p, _, _ = pipeline.Build(pipeline.Options{})
+// installPipeline builds the pipeline from the environment and the rule file,
+// activates it and starts watching the file. Without rules nothing is
+// installed, so the pumps keep their plain code path. A typo in the options or
+// the file must never stop logging: an invalid option or an invalid file is
+// logged as an error and ignored, the other settings stay active.
+// The caller stops the returned watcher.
+func installPipeline(config Config) *pipeline.Watcher {
+	base := pipelineOptionsFromEnv(os.Getenv)
+	w := &pipeline.Watcher{
+		Path: valueOrDefault(os.Getenv(pipelineFileKey), pipeline.DefaultFilePath),
+		Env:  fileEnv(config, base.DefaultRules),
+		Base: base,
 	}
-	if p.Empty() {
-		router.SetProcessor(nil)
-		return
-	}
-	log.Println(p.Summary())
-	router.SetProcessor(p)
-}
-
-// applyRuleFile adds the rule file to the level 1 options. An invalid file is
-// skipped as a whole and every problem is logged.
-func applyRuleFile(opts pipeline.Options, config Config) pipeline.Options {
-	path := valueOrDefault(os.Getenv(pipelineFileKey), pipeline.DefaultFilePath)
-	res := pipeline.LoadFile(path, fileEnv(config, opts.DefaultRules))
-	for _, w := range res.Warnings {
-		log.Printf("warning: %s: %s", path, w)
-	}
-	if err := res.Err(); err != nil {
-		log.Printf("ERROR: ==================== %s is invalid ====================", path)
-		log.Printf("ERROR: the rule file is NOT used. Logging continues with the add-on options only.")
-		for _, e := range res.Errors {
-			log.Printf("ERROR:   %s", e)
-		}
-		log.Printf("ERROR: fix the file and restart the add-on")
-		return opts
-	}
-	return res.Config.Apply(opts)
+	w.Reload()
+	w.Start()
+	return w
 }
 
 // fileEnv gives the rule file validation the names of the configured routes.
@@ -215,6 +195,13 @@ func pipelineOptionsFromEnv(getenv func(string) string) pipeline.Options {
 			log.Printf("ERROR: %s ignored, no containers are excluded: %v", excludeContainersKey, err)
 		} else {
 			opts.ExcludeContainers = globs
+		}
+	}
+	if v := strings.TrimSpace(getenv(debugPipelineKey)); v != "" {
+		if debug, err := strconv.ParseBool(v); err != nil {
+			log.Printf("ERROR: %s=%q ignored, expected true or false", debugPipelineKey, v)
+		} else {
+			opts.Debug = debug
 		}
 	}
 	return opts

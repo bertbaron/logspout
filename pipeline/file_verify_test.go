@@ -29,7 +29,6 @@ func TestParseFileInvalidKinds(t *testing.T) {
 		{"targets is list", "targets: []\n", 1, "must be a mapping"},
 		{"targets is string", "targets: syslog\n", 1, "must be a mapping"},
 		{"target is list", "targets:\n  syslog: []\n", 2, "must be a mapping"},
-		{"target is null", "targets:\n  syslog:\n", 2, "must be a mapping"},
 		{"when is string", "rules:\n  - name: a\n    when: container\n    drop: true\n", 3, ""},
 		{"when is list", "rules:\n  - name: a\n    when: [x]\n    drop: true\n", 3, ""},
 		{"rule is string", "rules:\n  - just text\n", 2, ""},

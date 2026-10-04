@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gliderlabs/logspout/router"
 )
@@ -20,6 +21,8 @@ type Options struct {
 	Rules RuleSet
 	// Targets are the rules per route name.
 	Targets map[string]RuleSet
+	// Debug logs a trace line per message and stage.
+	Debug bool
 }
 
 // Pipeline is an immutable compiled pipeline. It implements router.Processor
@@ -32,6 +35,8 @@ type Pipeline struct {
 	targets  map[string]*Compiled
 
 	excluded []string
+	debug    bool
+	limiter  *traceLimiter
 }
 
 var _ router.Processor = (*Pipeline)(nil)
@@ -39,7 +44,10 @@ var _ router.Processor = (*Pipeline)(nil)
 // Build compiles the options. unknownDisabled lists names in
 // DisabledDefaults that are not in the selected set; they are not applied.
 func Build(o Options) (p *Pipeline, unknownDisabled []string, err error) {
-	p = &Pipeline{excluded: cleanExcludes(o.ExcludeContainers)}
+	p = &Pipeline{excluded: cleanExcludes(o.ExcludeContainers), debug: o.Debug}
+	if p.debug {
+		p.limiter = &traceLimiter{now: time.Now}
+	}
 	if p.version, err = ResolveDefaults(o.DefaultRules); err != nil {
 		return nil, nil, err
 	}
@@ -105,12 +113,18 @@ func (p *Pipeline) Empty() bool {
 // classification. The default list is separate from the user rules: a default
 // `stop` must not skip them.
 func (p *Pipeline) Global(m *router.Message) (dropped bool) {
+	if p.debug {
+		return p.globalDebug(m)
+	}
 	return p.exclude.Apply(m, nil) || p.defaults.Apply(m, nil) || p.global.Apply(m, nil)
 }
 
 // Target runs the rules of one route on a copy of m. A route without rules
 // gets m itself, without a copy.
 func (p *Pipeline) Target(routeName string, m *router.Message) (*router.Message, bool) {
+	if p.debug {
+		return p.targetDebug(routeName, m)
+	}
 	c := p.targets[routeName]
 	if c == nil {
 		return m, false

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -93,7 +94,7 @@ func (r *FileResult) Err() error {
 // LoadFile reads and validates the rule file. A missing file is valid and
 // has no rules.
 func LoadFile(path string, env FileEnv) *FileResult {
-	data, err := os.ReadFile(path)
+	data, err := readLimited(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return &FileResult{Config: &FileConfig{}}
 	}
@@ -101,6 +102,32 @@ func LoadFile(path string, env FileEnv) *FileResult {
 		return &FileResult{Errors: []Issue{{Message: err.Error()}}}
 	}
 	return ParseFile(data, env)
+}
+
+// MaxFileSize is the largest rule file that is loaded.
+const MaxFileSize = 1 << 20
+
+func readLimited(path string) ([]byte, error) {
+	// O_NONBLOCK: opening a FIFO for reading would wait for a writer.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	// A FIFO or device would block the read, and the start-up with it.
+	if info, err := f.Stat(); err != nil {
+		return nil, err
+	} else if !info.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	data, err := io.ReadAll(io.LimitReader(f, MaxFileSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > MaxFileSize {
+		return nil, fmt.Errorf("file too large (more than %d bytes)", MaxFileSize)
+	}
+	return data, nil
 }
 
 var yamlLineRe = regexp.MustCompile(`^(?:yaml: )?line (\d+)(?:, column (\d+))?: (.*)$`)
@@ -333,6 +360,9 @@ func (p *fileParser) parseTargets(k, v *yaml.Node) {
 			p.errorAt(name, "ambiguous target name %q: more than one route has this name, add #name to the route URIs", name.Value)
 		case !known[name.Value]:
 			p.errorAt(name, "unknown target %q (routes: %s)", name.Value, strings.Join(p.env.Routes, ", "))
+		}
+		if tv.Tag == "!!null" {
+			continue // `gelf:` without value is the same as no rules
 		}
 		if tv.Kind != yaml.MappingNode {
 			p.errorAt(tv, "target %s: must be a mapping with `rules`", name.Value)
