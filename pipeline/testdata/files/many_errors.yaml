@@ -1,0 +1,14 @@
+defaults: nope
+rules:
+  - name: bad regex
+    when: { match: '(' }
+    drop: true
+  - name: no action
+targets:
+  gelf:
+    rules:
+      - name: bad parser
+        parse: zzz
+    other: 1
+  missing:
+    rules: []

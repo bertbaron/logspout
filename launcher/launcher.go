@@ -29,6 +29,7 @@ const (
 
 	defaultRulesKey      = "DEFAULT_RULES"
 	excludeContainersKey = "EXCLUDE_CONTAINERS"
+	pipelineFileKey      = "PIPELINE_FILE"
 
 	logSourceKey     = "LOG_SOURCE"
 	logSourceDocker  = "docker"
@@ -124,7 +125,7 @@ func RunWithRunner(opts Options, start func(runner.Options) error) error {
 	}
 
 	// The env option may also set DEFAULT_RULES and EXCLUDE_CONTAINERS, so build from the final environment.
-	installPipeline()
+	installPipeline(config)
 
 	if logSource == logSourceJournal {
 		log.Println("# log source: journald")
@@ -141,26 +142,63 @@ func RunWithRunner(opts Options, start func(runner.Options) error) error {
 	})
 }
 
-// installPipeline builds the pipeline from the environment and activates it.
-// Without rules nothing is installed, so the pumps keep their plain code path.
-// A typo in the level 1 options must never stop logging: an invalid option is
-// logged as an error and ignored.
-func installPipeline() {
+// installPipeline builds the pipeline from the environment and the rule file
+// and activates it. Without rules nothing is installed, so the pumps keep their
+// plain code path. A typo in the options or the file must never stop logging:
+// an invalid option or an invalid file is logged as an error and ignored, the
+// other settings stay active.
+func installPipeline(config Config) {
 	opts := pipelineOptionsFromEnv(os.Getenv)
-	p, unknown, err := pipeline.Build(opts)
+	opts = applyRuleFile(opts, config)
+	// Unknown disable_defaults names are warned about, with position, when the file is parsed.
+	p, _, err := pipeline.Build(opts)
 	if err != nil {
 		log.Printf("ERROR: pipeline disabled: %v", err)
 		p, _, _ = pipeline.Build(pipeline.Options{})
 	}
-	for _, name := range unknown {
-		log.Printf("warning: no default rule named %q", name)
-	}
-	log.Println(p.Summary())
 	if p.Empty() {
 		router.SetProcessor(nil)
-	} else {
-		router.SetProcessor(p)
+		return
 	}
+	log.Println(p.Summary())
+	router.SetProcessor(p)
+}
+
+// applyRuleFile adds the rule file to the level 1 options. An invalid file is
+// skipped as a whole and every problem is logged.
+func applyRuleFile(opts pipeline.Options, config Config) pipeline.Options {
+	path := valueOrDefault(os.Getenv(pipelineFileKey), pipeline.DefaultFilePath)
+	res := pipeline.LoadFile(path, fileEnv(config, opts.DefaultRules))
+	for _, w := range res.Warnings {
+		log.Printf("warning: %s: %s", path, w)
+	}
+	if err := res.Err(); err != nil {
+		log.Printf("ERROR: ==================== %s is invalid ====================", path)
+		log.Printf("ERROR: the rule file is NOT used. Logging continues with the add-on options only.")
+		for _, e := range res.Errors {
+			log.Printf("ERROR:   %s", e)
+		}
+		log.Printf("ERROR: fix the file and restart the add-on")
+		return opts
+	}
+	return res.Config.Apply(opts)
+}
+
+// fileEnv gives the rule file validation the names of the configured routes.
+func fileEnv(config Config, defaultRules string) pipeline.FileEnv {
+	env := pipeline.FileEnv{DefaultRules: defaultRules}
+	seen := map[string]bool{}
+	for _, uri := range config.Routes {
+		name, _, err := router.RouteNameWithEnv(uri, config.lookupEnv)
+		if err != nil || seen[name] {
+			continue
+		}
+		seen[name] = true
+		env.Routes = append(env.Routes, name)
+	}
+	// Validate already passed in LoadConfig, so this cannot fail.
+	env.Ambiguous, _ = router.ValidateRouteNamesWithEnv(config.Routes, config.lookupEnv)
+	return env
 }
 
 func pipelineOptionsFromEnv(getenv func(string) string) pipeline.Options {

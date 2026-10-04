@@ -1,0 +1,2 @@
+defaults: off
+disable_defaults: [ha-core-log]

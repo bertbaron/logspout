@@ -1,0 +1,7 @@
+rules:
+  - name: ok
+    drop: true
+  - name: bad regex
+    when:
+      match: 'a(b'
+    drop: true

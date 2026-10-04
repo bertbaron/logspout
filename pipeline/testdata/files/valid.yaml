@@ -1,0 +1,26 @@
+defaults: v1
+disable_defaults: [ha-core-log, no-such-rule]
+
+rules:
+  - name: zigbee2mqtt levels
+    when:
+      container: addon_*_zigbee2mqtt
+      match: '^\[(?P<time>[^\]]+)\] (?P<level>\w+): (?P<msg>.*)$'
+    set:
+      level: ${level}
+      message: ${msg}
+  - name: bashio
+    when: { container: addon_local_myaddon }
+    parse: bashio
+
+targets:
+  syslog:
+    rules:
+      - name: core goes via remote_logger
+        when: { container: homeassistant }
+        drop: true
+  graylog:
+    rules:
+      - name: expr rule
+        when: { expr: 'source == "stderr" && level == "info"' }
+        set: { level: warning }

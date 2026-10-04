@@ -1,0 +1,5 @@
+rules:
+  - name: x
+    drop: true
+  - name: [unclosed
+    drop: true

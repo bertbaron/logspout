@@ -39,7 +39,7 @@ var _ router.Processor = (*Pipeline)(nil)
 // Build compiles the options. unknownDisabled lists names in
 // DisabledDefaults that are not in the selected set; they are not applied.
 func Build(o Options) (p *Pipeline, unknownDisabled []string, err error) {
-	p = &Pipeline{excluded: o.ExcludeContainers}
+	p = &Pipeline{excluded: cleanExcludes(o.ExcludeContainers)}
 	if p.version, err = ResolveDefaults(o.DefaultRules); err != nil {
 		return nil, nil, err
 	}
@@ -48,10 +48,10 @@ func Build(o Options) (p *Pipeline, unknownDisabled []string, err error) {
 			return nil, nil, err
 		}
 	}
-	if len(o.ExcludeContainers) > 0 {
+	if len(p.excluded) > 0 {
 		rule := Rule{
 			Name: "exclude_containers",
-			When: &Condition{Container: StringList(o.ExcludeContainers)},
+			When: &Condition{Container: StringList(p.excluded)},
 			Drop: true,
 		}
 		c, err := Compile(RuleSet{rule})
@@ -83,6 +83,18 @@ func Build(o Options) (p *Pipeline, unknownDisabled []string, err error) {
 	return p, unknownDisabled, nil
 }
 
+// cleanExcludes strips the leading '/' that `docker ps` style names can have
+// and skips entries that are empty after that.
+func cleanExcludes(in []string) []string {
+	var out []string
+	for _, g := range in {
+		if g = strings.TrimPrefix(g, "/"); g != "" {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
 // Empty reports whether the pipeline has no rules at all.
 func (p *Pipeline) Empty() bool {
 	return p == nil || (p.defaults == nil && p.exclude == nil && p.global == nil && len(p.targets) == 0)
@@ -110,16 +122,17 @@ func (p *Pipeline) Target(routeName string, m *router.Message) (*router.Message,
 	return out, false
 }
 
-// Summary is the one-line description that is logged on load.
+// Summary is the one-line description that is logged on load. The rule
+// counts do not include the exclude_containers rule, which is listed apart.
 func (p *Pipeline) Summary() string {
 	defaults := "off"
 	if p.version != "" {
-		defaults = p.version
+		defaults = fmt.Sprintf("%s (%d rules)", p.version, p.defaults.Len())
 	}
-	rules := p.defaults.Len() + p.exclude.Len() + p.global.Len()
+	fileRules := p.global.Len()
 	var targets []string
 	for name, c := range p.targets {
-		rules += c.Len()
+		fileRules += c.Len()
 		targets = append(targets, fmt.Sprintf("%s(%d)", name, c.Len()))
 	}
 	sort.Strings(targets)
@@ -129,6 +142,6 @@ func (p *Pipeline) Summary() string {
 		}
 		return strings.Join(s, ",")
 	}
-	return fmt.Sprintf("pipeline: default rules %s, %d rules, excluded containers: %s, targets with rules: %s",
-		defaults, rules, list(p.excluded), list(targets))
+	return fmt.Sprintf("pipeline: default rules %s, %d user rules (%d global), excluded containers: %s, targets with rules: %s",
+		defaults, fileRules, p.global.Len(), list(p.excluded), list(targets))
 }

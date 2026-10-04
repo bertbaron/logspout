@@ -1,0 +1,5 @@
+rules:
+  - name: bad expr
+    when:
+      expr: 'source ==='
+    drop: true

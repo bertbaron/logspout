@@ -20,7 +20,7 @@ func TestBuildEmptyAndSummary(t *testing.T) {
 	if out, dropped := p.Target("a", m); out != m || dropped {
 		t.Error("route without rules must get the same message, not a copy")
 	}
-	if s := p.Summary(); !strings.Contains(s, "default rules off, 0 rules") || !strings.Contains(s, "excluded containers: none") {
+	if s := p.Summary(); !strings.Contains(s, "default rules off, 0 user rules (0 global)") || !strings.Contains(s, "excluded containers: none") {
 		t.Errorf("summary %q", s)
 	}
 

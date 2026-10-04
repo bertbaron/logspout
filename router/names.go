@@ -21,6 +21,11 @@ func RouteName(uri string) (name string, explicit bool, err error) {
 	return routeNameWithEnv(uri, os.Getenv)
 }
 
+// RouteNameWithEnv is like RouteName but expands ${VAR} with getenv.
+func RouteNameWithEnv(uri string, getenv func(string) string) (name string, explicit bool, err error) {
+	return routeNameWithEnv(uri, getenv)
+}
+
 func routeNameWithEnv(uri string, getenv func(string) string) (string, bool, error) {
 	u, err := url.Parse(os.Expand(uri, getenv))
 	if err != nil {

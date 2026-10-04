@@ -24,7 +24,7 @@ type Rule struct {
 	Drop   bool              `yaml:"drop"`
 	Stop   bool              `yaml:"stop"`
 
-	line int // YAML line of the rule, 0 if not decoded from YAML
+	line, col int // YAML position of the rule, 0 if not decoded from YAML
 }
 
 var ruleKeys = map[string]bool{
@@ -64,7 +64,7 @@ func (r *Rule) UnmarshalYAML(n *yaml.Node) error {
 	if err := n.Decode((*plain)(r)); err != nil {
 		return err
 	}
-	r.line = n.Line
+	r.line, r.col = n.Line, n.Column
 	return nil
 }
 

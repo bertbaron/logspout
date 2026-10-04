@@ -1,0 +1,3 @@
+rules:
+  - name: bad parser
+    parse: nonesuch

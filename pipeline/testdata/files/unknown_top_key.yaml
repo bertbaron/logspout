@@ -1,0 +1,4 @@
+rules: []
+rulez:
+  - name: typo
+    drop: true
