@@ -405,6 +405,9 @@ func newContainerPump(container *docker.Container, stdout, stderr io.Reader) *co
 
 func (cp *containerPump) send(msg *Message) {
 	proc := CurrentProcessor()
+	if t := CurrentTap(); t != nil {
+		t.Observe(msg, proc)
+	}
 	if proc != nil && proc.Global(msg) {
 		return
 	}

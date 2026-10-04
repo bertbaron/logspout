@@ -16,9 +16,11 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gliderlabs/logspout/pipeline"
+	"github.com/gliderlabs/logspout/router"
 )
 
 const (
@@ -42,9 +44,21 @@ type Server struct {
 
 	writeMu sync.Mutex // one save at a time: write and reload as a unit
 
+	hubOnce  sync.Once
+	hub      *hub
+	testBusy atomic.Bool // a POST /api/test is running
+
 	mu     sync.Mutex
 	srv    *http.Server
 	closed bool
+}
+
+// samples returns the message buffer and live hub, created on first use.
+func (s *Server) samples() *hub {
+	s.hubOnce.Do(func() {
+		s.hub = &hub{routes: func() []string { return s.Watcher.Env.Routes }}
+	})
+	return s.hub
 }
 
 // Handler returns the handler for all requests.
@@ -76,8 +90,17 @@ func (s *Server) Serve(ln net.Listener) error {
 		return nil
 	}
 	s.srv = srv
+	// Only a running listener captures messages; otherwise the pumps are untouched.
+	router.SetTap(s.samples())
 	s.mu.Unlock()
-	if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+	err := srv.Serve(ln)
+	// After an unexpected error nothing serves the samples any more.
+	s.mu.Lock()
+	if router.CurrentTap() == router.Tap(s.samples()) {
+		router.SetTap(nil)
+	}
+	s.mu.Unlock()
+	if !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
@@ -88,7 +111,12 @@ func (s *Server) Close() {
 	s.mu.Lock()
 	s.closed = true
 	srv := s.srv
+	if srv != nil && router.CurrentTap() == router.Tap(s.samples()) {
+		router.SetTap(nil)
+	}
 	s.mu.Unlock()
+	// Shutdown does not wait for hijacked (websocket) connections.
+	defer s.samples().closeAll()
 	if srv == nil {
 		return
 	}
@@ -139,6 +167,18 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case "/api/validate":
 		if methodIs(w, r, http.MethodPost) {
 			s.validate(w, r)
+		}
+	case "/api/samples":
+		if methodIs(w, r, http.MethodGet) {
+			s.getSamples(w)
+		}
+	case "/api/test":
+		if methodIs(w, r, http.MethodPost) {
+			s.test(w, r)
+		}
+	case "/api/live":
+		if methodIs(w, r, http.MethodGet) {
+			s.live(w, r)
 		}
 	case "/api/status":
 		if methodIs(w, r, http.MethodGet) {
@@ -219,24 +259,38 @@ type contentBody struct {
 	Content *string `json:"content"`
 }
 
-// readContent decodes {content}. It writes the error response and returns false when the body is not usable.
-func readContent(w http.ResponseWriter, r *http.Request) (string, bool) {
-	var body contentBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody)).Decode(&body); err != nil {
+// decodeBody decodes the JSON body into v. It writes the error response and returns false when the body is not usable.
+// shape describes the expected body for the error message.
+func decodeBody(w http.ResponseWriter, r *http.Request, limit int64, shape string, v any) bool {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(v); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			writeError(w, http.StatusRequestEntityTooLarge, "request too large")
 		} else {
-			writeError(w, http.StatusBadRequest, "body must be JSON like {\"content\": \"...\"}")
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("body must be JSON like %s: %v", shape, err))
 		}
-		return "", false
+		return false
 	}
-	if body.Content == nil {
+	return true
+}
+
+// checkContent writes the error response and returns false when the rule file text is missing or too large.
+func checkContent(w http.ResponseWriter, content *string) bool {
+	if content == nil {
 		writeError(w, http.StatusBadRequest, "content is missing")
-		return "", false
+		return false
 	}
-	if len(*body.Content) > pipeline.MaxFileSize {
+	if len(*content) > pipeline.MaxFileSize {
 		writeError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("the rule file may be at most %d bytes", pipeline.MaxFileSize))
+		return false
+	}
+	return true
+}
+
+// readContent decodes {content}. It writes the error response and returns false when the body is not usable.
+func readContent(w http.ResponseWriter, r *http.Request) (string, bool) {
+	var body contentBody
+	if !decodeBody(w, r, maxBody, `{"content": "..."}`, &body) || !checkContent(w, body.Content) {
 		return "", false
 	}
 	return *body.Content, true
@@ -244,14 +298,21 @@ func readContent(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 // check validates like Reload does: the file, then the pipeline build with the add-on options.
 func (s *Server) check(content string) (errs, warnings []pipeline.Issue) {
+	_, errs, warnings = s.build(content)
+	return errs, warnings
+}
+
+// build is check that also returns the pipeline, which is not installed.
+func (s *Server) build(content string) (p *pipeline.Pipeline, errs, warnings []pipeline.Issue) {
 	res := pipeline.ParseFile([]byte(content), s.Watcher.Env)
 	if len(res.Errors) > 0 {
-		return res.Errors, res.Warnings
+		return nil, res.Errors, res.Warnings
 	}
-	if _, _, err := pipeline.Build(res.Config.Apply(s.Watcher.Base)); err != nil {
-		return []pipeline.Issue{{Message: err.Error()}}, res.Warnings
+	p, _, err := pipeline.Build(res.Config.Apply(s.Watcher.Base))
+	if err != nil {
+		return nil, []pipeline.Issue{{Message: err.Error()}}, res.Warnings
 	}
-	return nil, res.Warnings
+	return p, nil, res.Warnings
 }
 
 func (s *Server) validate(w http.ResponseWriter, r *http.Request) {

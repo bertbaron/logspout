@@ -35,3 +35,32 @@ func CurrentProcessor() Processor {
 	}
 	return nil
 }
+
+// Tap sees every raw message in the pumps, before the processor. The web
+// interface uses it for its samples and the live view. p is the active
+// processor at that moment, nil when none. Observe must not block, must not
+// modify m and must not keep it: m is shared with the rest of the pump.
+type Tap interface {
+	Observe(m *Message, p Processor)
+}
+
+type tapHolder struct{ t Tap }
+
+var tap atomic.Pointer[tapHolder]
+
+// SetTap sets the tap, or removes it with nil. Without a tap the pumps do nothing extra.
+func SetTap(t Tap) {
+	if t == nil {
+		tap.Store(nil)
+		return
+	}
+	tap.Store(&tapHolder{t})
+}
+
+// CurrentTap returns the active tap, or nil.
+func CurrentTap() Tap {
+	if h := tap.Load(); h != nil {
+		return h.t
+	}
+	return nil
+}

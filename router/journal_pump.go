@@ -177,6 +177,9 @@ func (p *JournalPump) Route(route *Route, logstream chan *Message) {
 
 func (p *JournalPump) dispatch(msg *Message) {
 	proc := CurrentProcessor()
+	if t := CurrentTap(); t != nil {
+		t.Observe(msg, proc)
+	}
 	if proc != nil && proc.Global(msg) {
 		return
 	}
