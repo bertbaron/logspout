@@ -69,10 +69,7 @@ func (a *Adapter) Stream(logstream chan *router.Message) {
 		if m.Data == "" {
 			continue
 		}
-		level := gelf.LOG_INFO
-		if m.Source == "stderr" {
-			level = gelf.LOG_ERR
-		}
+		level := m.gelfLevel()
 		extra, err := m.getExtraFields()
 		if err != nil {
 			log.Println("Graylog:", err)
@@ -97,6 +94,27 @@ func (a *Adapter) Stream(logstream chan *router.Message) {
 
 type Message struct {
 	*router.Message
+}
+
+func (m Message) gelfLevel() int {
+	switch m.Level {
+	case router.LevelDebug:
+		return gelf.LOG_DEBUG
+	case router.LevelInfo:
+		return gelf.LOG_INFO
+	case router.LevelNotice:
+		return gelf.LOG_NOTICE
+	case router.LevelWarning:
+		return gelf.LOG_WARNING
+	case router.LevelError:
+		return gelf.LOG_ERR
+	case router.LevelCritical:
+		return gelf.LOG_CRIT
+	}
+	if m.Source == "stderr" {
+		return gelf.LOG_ERR
+	}
+	return gelf.LOG_INFO
 }
 
 func (m Message) getExtraFields() (json.RawMessage, error) {
@@ -124,6 +142,13 @@ func (m Message) getExtraFields() (json.RawMessage, error) {
 	swarmnode := m.Container.Node
 	if swarmnode != nil {
 		extra["_swarm_node"] = swarmnode.Name
+	}
+
+	// Built-in fields win over rule fields
+	for name, value := range m.Fields {
+		if _, exists := extra["_"+name]; !exists {
+			extra["_"+name] = value
+		}
 	}
 
 	rawExtra, err := json.Marshal(extra)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/syslog"
 	"net"
 	"os"
 	"strconv"
@@ -285,5 +286,92 @@ func sendLogstream(stream chan *router.Message, messages chan string, adapter ro
 func check(t *testing.T, in string, out string) {
 	if in != out {
 		t.Errorf("expected: %s\ngot: %s\n", in, out)
+	}
+}
+
+func newPriorityMessage(source, level string) *Message {
+	return &Message{&router.Message{Source: source, Level: level}}
+}
+
+// Without Level the priority must equal the pre-pipeline behavior.
+func TestPriorityCompatEmptyLevel(t *testing.T) {
+	tests := []struct {
+		source string
+		want   syslog.Priority
+	}{
+		{"stdout", syslog.LOG_USER | syslog.LOG_INFO},
+		{"stderr", syslog.LOG_USER | syslog.LOG_ERR},
+		{"journal", syslog.LOG_DAEMON | syslog.LOG_INFO},
+	}
+	for _, tt := range tests {
+		if got := newPriorityMessage(tt.source, "").Priority(); got != tt.want {
+			t.Errorf("source %s: priority = %d, want %d", tt.source, got, tt.want)
+		}
+	}
+}
+
+func TestPriorityWithLevel(t *testing.T) {
+	tests := []struct {
+		source, level string
+		want          syslog.Priority
+	}{
+		{"stdout", "debug", syslog.LOG_USER | syslog.LOG_DEBUG},
+		{"stdout", "info", syslog.LOG_USER | syslog.LOG_INFO},
+		{"stderr", "notice", syslog.LOG_USER | syslog.LOG_NOTICE},
+		{"stderr", "info", syslog.LOG_USER | syslog.LOG_INFO},
+		{"stdout", "warning", syslog.LOG_USER | syslog.LOG_WARNING},
+		{"stdout", "error", syslog.LOG_USER | syslog.LOG_ERR},
+		{"stdout", "critical", syslog.LOG_USER | syslog.LOG_CRIT},
+		{"journal", "error", syslog.LOG_DAEMON | syslog.LOG_ERR},
+	}
+	for _, tt := range tests {
+		if got := newPriorityMessage(tt.source, tt.level).Priority(); got != tt.want {
+			t.Errorf("%s/%s: priority = %d, want %d", tt.source, tt.level, got, tt.want)
+		}
+	}
+}
+
+func TestRenderLevel(t *testing.T) {
+	t.Setenv("SYSLOG_HOSTNAME", "host")
+	if _, err := os.Stat("/etc/host_hostname"); err == nil {
+		t.Skip("/etc/host_hostname exists")
+	}
+	container := &docker.Container{
+		Name:   "/c",
+		Config: &docker.Config{},
+		State:  docker.State{Pid: 7},
+	}
+	ts := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+
+	render := func(t *testing.T, m *Message) string {
+		t.Helper()
+		tmpl, err := getFieldTemplates(&router.Route{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		buf, err := m.Render(Rfc5424Format, tmpl)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(buf)
+	}
+
+	got := render(t, &Message{&router.Message{Container: container, Source: "stderr", Data: "x", Time: ts}})
+	if want := "<11>1 2026-10-04T12:00:00Z host c 7 - - x\n"; got != want {
+		t.Errorf("compat stderr: got %q, want %q", got, want)
+	}
+	got = render(t, &Message{&router.Message{Container: container, Source: "stdout", Data: "x", Time: ts}})
+	if want := "<14>1 2026-10-04T12:00:00Z host c 7 - - x\n"; got != want {
+		t.Errorf("compat stdout: got %q, want %q", got, want)
+	}
+	got = render(t, &Message{&router.Message{Container: container, Source: "stdout", Data: "x", Time: ts, Level: "warning"}})
+	if want := "<12>1 2026-10-04T12:00:00Z host c 7 - - x\n"; got != want {
+		t.Errorf("level warning: got %q, want %q", got, want)
+	}
+
+	t.Setenv("SYSLOG_DATA", "{{.Level}}: {{.Data}}")
+	got = render(t, &Message{&router.Message{Container: container, Source: "stdout", Data: "x", Time: ts, Level: "error"}})
+	if want := "<11>1 2026-10-04T12:00:00Z host c 7 - - error: x\n"; got != want {
+		t.Errorf("level template: got %q, want %q", got, want)
 	}
 }

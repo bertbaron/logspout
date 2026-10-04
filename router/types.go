@@ -56,6 +56,10 @@ type Message struct {
 	Source    string
 	Data      string
 	Time      time.Time
+	// Level is empty when unknown; adapters then derive it from Source.
+	Level string
+	// Fields are extra fields set by pipeline rules.
+	Fields map[string]string
 }
 
 // Route represents what subset of logs should go where

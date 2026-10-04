@@ -260,7 +260,7 @@ func (a *SplunkAdapter) flushHttp(reason string) {
 	messages := make([]string, 0, len(buffer))
 	for i := range buffer {
 		m := buffer[i]
-		splunkMessageEvent := SplunkMessageEvent{Message: m.Data}
+		splunkMessageEvent := SplunkMessageEvent{Message: m.Data, Level: m.Level}
 		if os.Getenv("SPLUNK_DOCKER_LABELS") != "" {
 			splunkMessageEvent.Labels = make(map[string]string)
 			for label, value := range m.Container.Config.Labels {
@@ -274,6 +274,7 @@ func (a *SplunkAdapter) flushHttp(reason string) {
 			SourceType: a.splunkSourcetype,
 			Index:      a.splunkIndex,
 			Event:      splunkMessageEvent,
+			Fields:     m.Fields,
 		}
 		message, err := json.Marshal(splunkMessage)
 		if err != nil {
@@ -366,6 +367,7 @@ func createRequest(url string, useGzip bool, splunkToken string, payload string)
 type SplunkMessageEvent struct {
 	Message string            `json:"message"`
 	Labels  map[string]string `json:"labels"`
+	Level   string            `json:"level,omitempty"`
 }
 
 // SplunkMessage is a simple JSON representation of the log message.
@@ -376,4 +378,6 @@ type SplunkMessage struct {
 	Index      string             `json:"index"`
 	Hostname   string             `json:"host"`
 	Event      SplunkMessageEvent `json:"event"`
+	// Fields are indexed fields in HEC
+	Fields map[string]string `json:"fields,omitempty"`
 }

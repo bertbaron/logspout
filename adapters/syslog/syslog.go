@@ -408,8 +408,16 @@ func (m *Message) Render(format Format, tmpl *FieldTemplates) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Priority returns a syslog.Priority based on the message source
+// Priority returns a syslog.Priority based on the message source, with the
+// severity taken from Level when it is set
 func (m *Message) Priority() syslog.Priority {
+	if sev, ok := m.severity(); ok {
+		facility := syslog.LOG_DAEMON
+		if m.Source == "stdout" || m.Source == "stderr" {
+			facility = syslog.LOG_USER
+		}
+		return facility | sev
+	}
 	switch m.Source {
 	case "stdout":
 		return syslog.LOG_USER | syslog.LOG_INFO
@@ -418,6 +426,24 @@ func (m *Message) Priority() syslog.Priority {
 	default:
 		return syslog.LOG_DAEMON | syslog.LOG_INFO
 	}
+}
+
+func (m *Message) severity() (syslog.Priority, bool) {
+	switch m.Level {
+	case router.LevelDebug:
+		return syslog.LOG_DEBUG, true
+	case router.LevelInfo:
+		return syslog.LOG_INFO, true
+	case router.LevelNotice:
+		return syslog.LOG_NOTICE, true
+	case router.LevelWarning:
+		return syslog.LOG_WARNING, true
+	case router.LevelError:
+		return syslog.LOG_ERR, true
+	case router.LevelCritical:
+		return syslog.LOG_CRIT, true
+	}
+	return 0, false
 }
 
 // Hostname returns the os hostname

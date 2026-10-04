@@ -29,9 +29,10 @@ func init() {
 
 // LokiAdapter is an adapter that streams logs to Loki.
 type LokiAdapter struct {
-	hostname string
-	route    *router.Route
-	client   *lokiclient.Client
+	hostname   string
+	route      *router.Route
+	client     *lokiclient.Client
+	levelLabel bool
 }
 
 func logger(v ...interface{}) {
@@ -61,9 +62,10 @@ func NewLokiAdapter(route *router.Route) (router.LogAdapter, error) {
 	go waitExit(client, c)
 
 	return &LokiAdapter{
-		hostname: getHostname(),
-		route:    route,
-		client:   client,
+		hostname:   getHostname(),
+		route:      route,
+		client:     client,
+		levelLabel: route.Options["level_label"] == "true",
 	}, nil
 }
 
@@ -72,22 +74,7 @@ func (a *LokiAdapter) Stream(logstream chan *router.Message) {
 	defer a.client.Stop()
 
 	for m := range logstream {
-		labels := model.LabelSet{
-			"nodename":       a.hostname,
-			"container_id":   m.Container.ID,
-			"container_name": m.Container.Name[1:],
-			"image_name":     m.Container.Config.Image,
-		}
-		// The journal log source does not know the following fields, so they are omitted there
-		if m.Container.Image != "" {
-			labels["image_id"] = m.Container.Image
-		}
-		if len(m.Container.Config.Cmd) > 0 {
-			labels["command"] = strings.Join(m.Container.Config.Cmd, " ")
-		}
-		if !m.Container.Created.IsZero() {
-			labels["created"] = m.Container.Created.String()
-		}
+		labels := a.labels(m)
 
 		line := strings.TrimSpace(m.Data)
 		if len(line) > 0 {
@@ -96,6 +83,30 @@ func (a *LokiAdapter) Stream(logstream chan *router.Message) {
 			}
 		}
 	}
+}
+
+func (a *LokiAdapter) labels(m *router.Message) model.LabelSet {
+	labels := model.LabelSet{
+		"nodename":       a.hostname,
+		"container_id":   m.Container.ID,
+		"container_name": m.Container.Name[1:],
+		"image_name":     m.Container.Config.Image,
+	}
+	// The journal log source does not know the following fields, so they are omitted there
+	if m.Container.Image != "" {
+		labels["image_id"] = m.Container.Image
+	}
+	if len(m.Container.Config.Cmd) > 0 {
+		labels["command"] = strings.Join(m.Container.Config.Cmd, " ")
+	}
+	if !m.Container.Created.IsZero() {
+		labels["created"] = m.Container.Created.String()
+	}
+	// A level label changes the stream identity, so it is opt-in
+	if a.levelLabel && m.Level != "" {
+		labels["level"] = m.Level
+	}
+	return labels
 }
 
 func waitExit(client *lokiclient.Client, c chan os.Signal) {

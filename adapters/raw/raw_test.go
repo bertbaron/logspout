@@ -16,14 +16,17 @@ type mockConn struct {
 	closed  bool
 }
 
-func (c *mockConn) Write(b []byte) (int, error)         { c.written = append(c.written, b...); return len(b), nil }
-func (c *mockConn) Close() error                        { c.closed = true; return nil }
-func (c *mockConn) Read(b []byte) (int, error)          { return 0, nil }
-func (c *mockConn) LocalAddr() net.Addr                 { return &net.TCPAddr{} }
-func (c *mockConn) RemoteAddr() net.Addr                { return &net.TCPAddr{} }
-func (c *mockConn) SetDeadline(t time.Time) error       { return nil }
-func (c *mockConn) SetReadDeadline(t time.Time) error   { return nil }
-func (c *mockConn) SetWriteDeadline(t time.Time) error  { return nil }
+func (c *mockConn) Write(b []byte) (int, error) {
+	c.written = append(c.written, b...)
+	return len(b), nil
+}
+func (c *mockConn) Close() error                       { c.closed = true; return nil }
+func (c *mockConn) Read(b []byte) (int, error)         { return 0, nil }
+func (c *mockConn) LocalAddr() net.Addr                { return &net.TCPAddr{} }
+func (c *mockConn) RemoteAddr() net.Addr               { return &net.TCPAddr{} }
+func (c *mockConn) SetDeadline(t time.Time) error      { return nil }
+func (c *mockConn) SetReadDeadline(t time.Time) error  { return nil }
+func (c *mockConn) SetWriteDeadline(t time.Time) error { return nil }
 
 // mockTransport implements router.AdapterTransport and returns a mockConn.
 type mockTransport struct {
@@ -140,5 +143,50 @@ func TestRawAdapterInvalidTemplate(t *testing.T) {
 	_, err := NewRawAdapter(route)
 	if err == nil {
 		t.Error("expected error for invalid template, got nil")
+	}
+}
+
+func streamRaw(t *testing.T, name string, msgs ...*router.Message) string {
+	t.Helper()
+	transport := &mockTransport{}
+	router.AdapterTransports.Register(transport, name)
+	defer router.AdapterTransports.Unregister(name)
+
+	adapter, err := NewRawAdapter(&router.Route{Adapter: "raw+" + name, Address: "localhost:9999"})
+	if err != nil {
+		t.Fatalf("unexpected error creating adapter: %v", err)
+	}
+	stream := make(chan *router.Message, len(msgs))
+	done := make(chan struct{})
+	go func() {
+		adapter.Stream(stream)
+		close(done)
+	}()
+	for _, m := range msgs {
+		stream <- m
+	}
+	close(stream)
+	<-done
+	return string(transport.conn.written)
+}
+
+// Without Level and Fields the default output must equal the pre-pipeline behavior.
+func TestRawCompatEmptyLevelAndFields(t *testing.T) {
+	for _, source := range []string{"stdout", "stderr"} {
+		m := newTestMessage("hello")
+		m.Source = source
+		if got := streamRaw(t, "compat"+source, m); got != "hello\n" {
+			t.Errorf("source %s: got %q, want %q", source, got, "hello\n")
+		}
+	}
+}
+
+func TestRawLevelTemplateVariable(t *testing.T) {
+	t.Setenv("RAW_FORMAT", "[{{.Level}}] {{.Data}} {{.Fields.logger}}\n")
+	m := newTestMessage("hello")
+	m.Level = "warning"
+	m.Fields = map[string]string{"logger": "core"}
+	if got := streamRaw(t, "lvl", m); got != "[warning] hello core\n" {
+		t.Errorf("got %q", got)
 	}
 }

@@ -248,3 +248,86 @@ func TestGelfGetExtraFieldsOmitsUnknownDockerFields(t *testing.T) {
 		t.Errorf("expected _container_name to be kept, got '%v'", extra["_container_name"])
 	}
 }
+
+// Without Level and Fields the output must equal the pre-pipeline behavior.
+func TestGelfCompatEmptyLevelAndFields(t *testing.T) {
+	tests := []struct {
+		source string
+		want   int32
+	}{
+		{"stdout", int32(gelf.LOG_INFO)},
+		{"stderr", int32(gelf.LOG_ERR)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.source, func(t *testing.T) {
+			mock := &mockGelfWriter{}
+			streamAndWait(&Adapter{writer: mock}, &router.Message{
+				Container: newTestContainer(),
+				Data:      "line",
+				Source:    tt.source,
+				Time:      time.Now(),
+			})
+			if len(mock.messages) != 1 {
+				t.Fatalf("expected 1 message, got %d", len(mock.messages))
+			}
+			if mock.messages[0].Level != tt.want {
+				t.Errorf("level = %d, want %d", mock.messages[0].Level, tt.want)
+			}
+			var extra map[string]interface{}
+			if err := json.Unmarshal(mock.messages[0].RawExtra, &extra); err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"_container_id", "_container_name", "_image_name", "_command"}
+			if len(extra) != len(want) {
+				t.Errorf("extra keys = %v, want exactly %v", extra, want)
+			}
+			for _, k := range want {
+				if _, ok := extra[k]; !ok {
+					t.Errorf("missing %s", k)
+				}
+			}
+		})
+	}
+}
+
+func TestGelfLevelAndFields(t *testing.T) {
+	tests := []struct {
+		level  string
+		source string
+		want   int32
+	}{
+		{"debug", "stdout", int32(gelf.LOG_DEBUG)},
+		{"info", "stderr", int32(gelf.LOG_INFO)},
+		{"notice", "stdout", int32(gelf.LOG_NOTICE)},
+		{"warning", "stdout", int32(gelf.LOG_WARNING)},
+		{"error", "stdout", int32(gelf.LOG_ERR)},
+		{"critical", "stdout", int32(gelf.LOG_CRIT)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.level, func(t *testing.T) {
+			mock := &mockGelfWriter{}
+			streamAndWait(&Adapter{writer: mock}, &router.Message{
+				Container: newTestContainer(),
+				Data:      "line",
+				Source:    tt.source,
+				Time:      time.Now(),
+				Level:     tt.level,
+				Fields:    map[string]string{"logger": "homeassistant.core", "container_id": "evil"},
+			})
+			msg := mock.messages[0]
+			if msg.Level != tt.want {
+				t.Errorf("level = %d, want %d", msg.Level, tt.want)
+			}
+			var extra map[string]interface{}
+			if err := json.Unmarshal(msg.RawExtra, &extra); err != nil {
+				t.Fatal(err)
+			}
+			if extra["_logger"] != "homeassistant.core" {
+				t.Errorf("_logger = %v", extra["_logger"])
+			}
+			if extra["_container_id"] != "abc123def456" {
+				t.Errorf("built-in _container_id was overridden: %v", extra["_container_id"])
+			}
+		})
+	}
+}
