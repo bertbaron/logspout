@@ -93,6 +93,20 @@ func (p *Pipeline) targetDebug(routeName string, m *router.Message) (*router.Mes
 	return out, false
 }
 
+// SkipTarget reports whether the name has target rules. It is called instead
+// of Target when the name is ambiguous, so the rules do not run.
+func (p *Pipeline) SkipTarget(routeName string, m *router.Message) bool {
+	has := p.targets[routeName] != nil
+	if p.debug && !m.Untraced {
+		if has {
+			p.tracef("target=%s container=%s target rules skipped: route name is ambiguous", routeName, containerName(m))
+		} else {
+			p.tracef("target=%s container=%s no rules sent", routeName, containerName(m))
+		}
+	}
+	return has
+}
+
 func containerName(m *router.Message) string {
 	if m.Container == nil {
 		return ""

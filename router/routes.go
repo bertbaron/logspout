@@ -157,7 +157,7 @@ func (rm *RouteManager) Add(route *Route) error {
 	if err != nil {
 		return err
 	}
-	rm.warnClash(route.ID, name)
+	rm.warnClash(route.ID, name, explicit)
 	route.Name, route.NameExplicit = name, explicit
 	if route.ID == "" {
 		h := sha1.New() //nolint:gosec
@@ -184,12 +184,13 @@ func (rm *RouteManager) Add(route *Route) error {
 	return nil
 }
 
-// warnClash logs when other routes already have the same name. The route is
-// still added: the name becomes ambiguous and a rule file cannot target it.
-// The caller must hold the lock.
-func (rm *RouteManager) warnClash(routeID, name string) {
+// warnClash logs when other routes already have the same name and at least one
+// of the two names is explicit. Two default names stay quiet: existing installs
+// often have two routes of one type. The route is still added: the name becomes
+// ambiguous and a rule file cannot target it. The caller must hold the lock.
+func (rm *RouteManager) warnClash(routeID, name string, explicit bool) {
 	for id, other := range rm.routes {
-		if other.Name == name && id != routeID {
+		if other.Name == name && id != routeID && (explicit || other.NameExplicit) {
 			log.Printf("warning: more than one route has the name %q; add a unique #name to the route URI so rules can target it", name)
 			return
 		}
@@ -228,13 +229,27 @@ func (rm *RouteManager) targetMessage(proc Processor, route *Route, msg *Message
 	if !rm.AmbiguousName(route.Name) {
 		return proc.Target(route.Name, msg)
 	}
-	// Target does not change msg (copy on write); a different result means rules exist for this name.
-	if out, dropped := proc.Target(route.Name, msg); dropped || out != msg {
+	if rm.hasSkippedTarget(proc, route.Name, msg) {
 		if _, seen := rm.warned.LoadOrStore(route.Name, true); !seen {
 			log.Printf("warning: more than one route has the name %q, so the target rules for this name are not applied", route.Name)
 		}
 	}
 	return msg, false
+}
+
+// targetSkipper is implemented by a processor that can tell, without running
+// the rules, that target rules exist for a name (and trace that they are skipped).
+type targetSkipper interface {
+	SkipTarget(routeName string, m *Message) (hasRules bool)
+}
+
+func (rm *RouteManager) hasSkippedTarget(proc Processor, name string, msg *Message) bool {
+	if s, ok := proc.(targetSkipper); ok {
+		return s.SkipTarget(name, msg)
+	}
+	// Target does not change msg (copy on write); a different result means rules exist for this name.
+	out, dropped := proc.Target(name, msg)
+	return dropped || out != msg
 }
 
 func (rm *RouteManager) route(route *Route) {

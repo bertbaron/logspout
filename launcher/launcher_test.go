@@ -213,6 +213,11 @@ func TestConfigValidateRouteNames(t *testing.T) {
 
 func runWithOptionsJSON(t *testing.T, body string) (runner.Options, bool, error) {
 	t.Helper()
+	return runWithOptionsJSONIngress(t, body, "")
+}
+
+func runWithOptionsJSONIngress(t *testing.T, body, ingressAddr string) (runner.Options, bool, error) {
+	t.Helper()
 	optionsPath := filepath.Join(t.TempDir(), "options.json")
 	if err := os.WriteFile(optionsPath, []byte(body), 0600); err != nil {
 		t.Fatal(err)
@@ -223,6 +228,7 @@ func runWithOptionsJSON(t *testing.T, body string) (runner.Options, bool, error)
 		DockerSocketPath: filepath.Join(t.TempDir(), "missing.sock"),
 		OptionsPath:      optionsPath,
 		UseJournal:       func() {},
+		IngressAddr:      ingressAddr,
 	}, func(o runner.Options) error {
 		got, started = o, true
 		return nil

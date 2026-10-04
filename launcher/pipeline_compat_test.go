@@ -1,7 +1,9 @@
 package launcher
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -20,8 +22,19 @@ func envSnapshot(keys ...string) map[string]string {
 
 // An options.json of an existing install must not install a processor or set new variables.
 func TestRunWithRunnerExistingInstallUnchanged(t *testing.T) {
+	testExistingInstallUnchanged(t, "")
+}
+
+// The production path: the ingress listener (and the tap) is started.
+func TestRunWithRunnerExistingInstallUnchangedWithIngress(t *testing.T) {
+	testExistingInstallUnchanged(t, "127.0.0.1:0")
+}
+
+func testExistingInstallUnchanged(t *testing.T, ingressAddr string) {
 	t.Setenv("DEFAULT_RULES", "stale")
 	t.Setenv("EXCLUDE_CONTAINERS", "stale")
+	router.SetTap(nil)
+	t.Cleanup(func() { router.SetTap(nil) })
 	router.SetProcessor(nil)
 	t.Cleanup(func() { router.SetProcessor(nil) })
 
@@ -29,9 +42,11 @@ func TestRunWithRunnerExistingInstallUnchanged(t *testing.T) {
 	  "routes": ["syslog+tcp://a:514#primary", "gelf://g:12201?filter.sources=stdout", "multiline+syslog://m:514"],
 	  "hostname": "ha",
 	  "strip_ansi": true,
-	  "env": [{"name": "SYSLOG_FORMAT", "value": "rfc3164"}, {"name": "MULTILINE_ENABLE_DEFAULT", "value": "true"}]
+	  "env": [{"name": "PIPELINE_FILE", "value": %q}, {"name": "SYSLOG_FORMAT", "value": "rfc3164"}, {"name": "MULTILINE_ENABLE_DEFAULT", "value": "true"}]
 	}`
-	got, started, err := runWithOptionsJSON(t, body)
+	// The launcher clears managed variables first, so the missing rule file goes in through the env option.
+	body = fmt.Sprintf(body, filepath.Join(t.TempDir(), "missing.yaml"))
+	got, started, err := runWithOptionsJSONIngress(t, body, ingressAddr)
 	if err != nil || !started {
 		t.Fatalf("started=%v err=%v", started, err)
 	}
