@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"github.com/gliderlabs/logspout/ingress"
 	"github.com/gliderlabs/logspout/launcher"
 	_ "github.com/gliderlabs/logspout/modules"
 )
@@ -11,7 +12,7 @@ import (
 var Version string
 
 func main() {
-	if err := launcher.Run(launcher.Options{Version: Version}); err != nil {
+	if err := launcher.Run(launcher.Options{Version: Version, IngressAddr: ingress.DefaultAddr}); err != nil {
 		log.Fatal(err)
 	}
 }

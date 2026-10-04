@@ -56,6 +56,7 @@ func TestWatcherReloadThroughPumps(t *testing.T) {
 			}
 
 			write("rules:\n  - {name: a, when: {match: noisy}, drop: true}\n")
+			w.Check()
 			if !w.Check() {
 				t.Fatal("new file not noticed")
 			}
@@ -65,11 +66,13 @@ func TestWatcherReloadThroughPumps(t *testing.T) {
 
 			write("rules:\n  - {name: b, when: {match: quiet}, drop: true}\n")
 			w.Check()
+			w.Check()
 			if got, want := run(all...), []string{"noisy", "plain"}; !reflect.DeepEqual(got, want) {
 				t.Errorf("after edit: %v", got)
 			}
 
 			write("rules: [oops\n")
+			w.Check()
 			w.Check()
 			if got, want := run(all...), []string{"noisy", "plain"}; !reflect.DeepEqual(got, want) {
 				t.Errorf("after invalid edit: %v", got)
@@ -78,6 +81,7 @@ func TestWatcherReloadThroughPumps(t *testing.T) {
 			if err := os.Remove(path); err != nil {
 				t.Fatal(err)
 			}
+			w.Check()
 			w.Check()
 			if router.CurrentProcessor() != nil {
 				t.Error("processor kept after delete")

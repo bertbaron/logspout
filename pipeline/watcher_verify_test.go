@@ -36,7 +36,7 @@ func TestVerifySavePatterns(t *testing.T) {
 	f, err := os.OpenFile(tw.Path, os.O_TRUNC|os.O_WRONLY, 0o600)
 	must(t, err)
 	bump(1)
-	tw.Check()
+	tw.poll()
 	// An empty file is a valid file without rules.
 	if activeDrops(tw, "noisy") {
 		t.Error("empty file keeps the old rules")
@@ -45,7 +45,7 @@ func TestVerifySavePatterns(t *testing.T) {
 	must(t, err)
 	must(t, f.Close())
 	bump(2)
-	if !tw.Check() || !activeDrops(tw, "quiet") || !activeDrops(tw, "other") {
+	if !tw.poll() || !activeDrops(tw, "quiet") || !activeDrops(tw, "other") {
 		t.Fatal("after truncate+write the full file is not active")
 	}
 
@@ -55,12 +55,12 @@ func TestVerifySavePatterns(t *testing.T) {
 	_, err = f.WriteString(dropNoisy[:30])
 	must(t, err)
 	bump(3)
-	tw.Check()
+	tw.poll()
 	_, err = f.WriteString(dropNoisy[30:])
 	must(t, err)
 	must(t, f.Close())
 	bump(4)
-	tw.Check()
+	tw.poll()
 	if !activeDrops(tw, "noisy") || activeDrops(tw, "quiet") {
 		t.Fatal("after partial write the full file is not active")
 	}
@@ -70,7 +70,7 @@ func TestVerifySavePatterns(t *testing.T) {
 	must(t, os.WriteFile(tmp, []byte(dropQuiet), 0o600))
 	must(t, os.Rename(tmp, tw.Path))
 	bump(5)
-	if !tw.Check() || !activeDrops(tw, "quiet") {
+	if !tw.poll() || !activeDrops(tw, "quiet") {
 		t.Fatal("rename replace not picked up")
 	}
 
@@ -93,7 +93,7 @@ func TestVerifyFileKinds(t *testing.T) {
 	// valid -> directory: keep last valid
 	must(t, os.Remove(tw.Path))
 	must(t, os.Mkdir(tw.Path, 0o700))
-	tw.Check()
+	tw.poll()
 	if !activeDrops(tw, "noisy") {
 		t.Fatal("directory in place of the file lost the last valid rules")
 	}
@@ -105,13 +105,13 @@ func TestVerifyFileKinds(t *testing.T) {
 	old := time.Unix(1_600_000_000, 0)
 	must(t, os.Chtimes(real, old, old))
 	must(t, os.Symlink(real, tw.Path))
-	if !tw.Check() || !activeDrops(tw, "quiet") {
+	if !tw.poll() || !activeDrops(tw, "quiet") {
 		t.Fatal("symlink not followed")
 	}
 	// dangling symlink
 	// A dangling symlink is a missing file: the file rules are removed.
 	must(t, os.Remove(real))
-	tw.Check()
+	tw.poll()
 	if tw.last() != nil {
 		t.Error("dangling symlink keeps the file rules")
 	}
@@ -128,11 +128,11 @@ func TestVerifyUnreadableKeepsLast(t *testing.T) {
 	must(t, os.Chmod(tw.Path, 0))
 	t.Cleanup(func() { _ = os.Chmod(tw.Path, 0o600) })
 	// size/mtime unchanged: chmod alone does not trigger a reload
-	tw.Check()
+	tw.poll()
 	// force change signature
 	mt := time.Unix(1_650_000_000, 0)
 	must(t, os.Chtimes(tw.Path, mt, mt))
-	if !tw.Check() {
+	if !tw.poll() {
 		t.Fatal("expected reload")
 	}
 	if !activeDrops(tw, "noisy") {
@@ -152,7 +152,7 @@ func TestVerifyTooBigKeepsLast(t *testing.T) {
 		t.Fatalf("big file: applied=%v\n%s", res.Applied, logs())
 	}
 	tw.write(t, dropQuiet)
-	if !tw.Check() || !activeDrops(tw, "quiet") {
+	if !tw.poll() || !activeDrops(tw, "quiet") {
 		t.Fatal("shrunk file not loaded")
 	}
 }
@@ -164,17 +164,17 @@ func TestVerifyFlip(t *testing.T) {
 	tw.Reload()
 	for i := 0; i < 50; i++ {
 		tw.write(t, "rulez: []\n")
-		tw.Check()
+		tw.poll()
 		if !activeDrops(tw, "noisy") {
 			t.Fatal("lost rules on invalid")
 		}
 		tw.write(t, dropQuiet)
-		tw.Check()
+		tw.poll()
 		if !activeDrops(tw, "quiet") || activeDrops(tw, "noisy") {
 			t.Fatal("valid not active")
 		}
 		tw.write(t, dropNoisy)
-		tw.Check()
+		tw.poll()
 	}
 	if n := strings.Count(logs(), "is invalid"); n != 50 {
 		t.Errorf("invalid blocks=%d, want 50", n)

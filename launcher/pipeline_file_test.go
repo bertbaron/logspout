@@ -178,8 +178,11 @@ func TestDebugPipelineInvalidValueLogged(t *testing.T) {
 func TestDebugPipelineFromEnvOption(t *testing.T) {
 	debug := `"env": [{"name": "DEBUG_PIPELINE", "value": "true"}]`
 	out := runWithRuleFile(t, `{"routes": ["gelf://g:12201"], `+debug+`}`, nil)
-	if router.CurrentProcessor() != nil || strings.Contains(out, "trace") {
+	if router.CurrentProcessor() != nil || strings.Contains(out, "pipeline trace") {
 		t.Errorf("processor installed for DEBUG_PIPELINE alone: %s", out)
+	}
+	if !strings.Contains(out, "DEBUG_PIPELINE: no rules active, nothing to trace") {
+		t.Errorf("no hint that there is nothing to trace: %s", out)
 	}
 
 	rules := "rules:\n  - name: g\n    when: { match: x }\n    drop: true\n"

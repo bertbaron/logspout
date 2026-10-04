@@ -33,8 +33,12 @@ type Watcher struct {
 	last    fileSig
 	pending *fileSig // changed signature seen once, waiting to settle
 	applied bool     // a pipeline from a valid file version was applied
-	stop    chan struct{}
-	stopped chan struct{}
+
+	lastValid    bool // the last load of the file was valid
+	lastErrors   []Issue
+	lastWarnings []Issue
+	stop         chan struct{}
+	stopped      chan struct{}
 }
 
 // ReloadResult is the outcome of one Reload.
@@ -58,10 +62,6 @@ type fileSig struct {
 func (a fileSig) equal(b fileSig) bool {
 	return a.exists == b.exists && a.size == b.size && a.mtime.Equal(b.mtime)
 }
-
-// settled reports whether the file was last modified long enough ago that
-// nobody is still writing it.
-func (a fileSig) settled() bool { return time.Since(a.mtime) > time.Second }
 
 func (w *Watcher) stat() fileSig {
 	info, err := os.Stat(w.Path)
@@ -105,6 +105,10 @@ func (w *Watcher) reload() ReloadResult {
 		log.Printf("warning: %s: %s", w.Path, i)
 	}
 
+	defer func() {
+		w.lastValid, w.lastErrors, w.lastWarnings = len(out.Errors) == 0, out.Errors, out.Warnings
+	}()
+
 	var p *Pipeline
 	if res.Err() == nil {
 		var err error
@@ -133,6 +137,9 @@ func (w *Watcher) reload() ReloadResult {
 	}
 
 	w.apply(p)
+	if p.Empty() && w.Base.Debug {
+		log.Println("DEBUG_PIPELINE: no rules active, nothing to trace")
+	}
 	hadRules := !w.current.Empty()
 	w.current = p
 	switch {
@@ -158,9 +165,10 @@ func (w *Watcher) logInvalid(errs []Issue, optionsOnly bool) {
 	log.Printf("ERROR: the file is reloaded automatically when it changes")
 }
 
-// Check reloads when the file changed since the last load. A file that was
-// modified in the last second may still be half written: it is loaded when it
-// has not changed since the previous Check. It reports whether it reloaded.
+// Check reloads when the file changed since the last load and the change
+// is the same on two consecutive polls, so a half written file or a save by
+// rename (including a moment without file) is not loaded halfway. It reports
+// whether it reloaded.
 func (w *Watcher) Check() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -169,12 +177,31 @@ func (w *Watcher) Check() bool {
 		w.pending = nil
 		return false
 	}
-	if !sig.settled() && (w.pending == nil || !w.pending.equal(sig)) {
+	if w.pending == nil || !w.pending.equal(sig) {
 		w.pending = &sig
 		return false
 	}
 	w.reload()
 	return true
+}
+
+// Status is a snapshot of the watcher for the status API.
+type Status struct {
+	// Loaded is false before the first Reload.
+	Loaded bool
+	// Valid is false when the last load of the file was invalid.
+	Valid    bool
+	Errors   []Issue
+	Warnings []Issue
+	// Pipeline is the active pipeline, nil when none.
+	Pipeline *Pipeline
+}
+
+// Status returns the outcome of the last load and the active pipeline.
+func (w *Watcher) Status() Status {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return Status{Loaded: w.loaded, Valid: w.lastValid, Errors: w.lastErrors, Warnings: w.lastWarnings, Pipeline: w.current}
 }
 
 // Start polls the file until Stop. Reload must have run before.

@@ -56,6 +56,8 @@ func (p *Pipeline) tracef(format string, args ...any) {
 
 func (p *Pipeline) globalDebug(m *router.Message) bool {
 	if strings.Contains(m.Data, traceMarker) {
+		// Decided here, before a rule can change the text: the target stage must not trace it either.
+		m.Untraced = true
 		return p.exclude.Apply(m, nil) || p.defaults.Apply(m, nil) || p.global.Apply(m, nil)
 	}
 	var t Trace
@@ -67,7 +69,7 @@ func (p *Pipeline) globalDebug(m *router.Message) bool {
 
 func (p *Pipeline) targetDebug(routeName string, m *router.Message) (*router.Message, bool) {
 	c := p.targets[routeName]
-	quiet := strings.Contains(m.Data, traceMarker)
+	quiet := m.Untraced
 	if c == nil {
 		if !quiet {
 			p.tracef("target=%s container=%s no rules sent", routeName, containerName(m))

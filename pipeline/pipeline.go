@@ -159,3 +159,29 @@ func (p *Pipeline) Summary() string {
 	return fmt.Sprintf("pipeline: default rules %s, %d user rules (%d global), excluded containers: %s, targets with rules: %s",
 		defaults, fileRules, p.global.Len(), list(p.excluded), list(targets))
 }
+
+// Counts describes a pipeline for the status API.
+type Counts struct {
+	// Defaults is the resolved default set, "" when off.
+	Defaults      string
+	DefaultsRules int
+	// Global are the user's global rules; Targets the rules per route name.
+	Global   int
+	Targets  map[string]int
+	Excluded []string
+}
+
+// Counts returns what the pipeline contains. It is safe on a nil pipeline.
+func (p *Pipeline) Counts() Counts {
+	c := Counts{Targets: map[string]int{}}
+	if p == nil {
+		return c
+	}
+	c.Defaults, c.DefaultsRules = p.version, p.defaults.Len()
+	c.Global = p.global.Len()
+	for name, t := range p.targets {
+		c.Targets[name] = t.Len()
+	}
+	c.Excluded = append([]string(nil), p.excluded...)
+	return c
+}

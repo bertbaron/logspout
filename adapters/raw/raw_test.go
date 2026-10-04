@@ -1,7 +1,9 @@
 package raw
 
 import (
+	"encoding/json"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -188,5 +190,27 @@ func TestRawLevelTemplateVariable(t *testing.T) {
 	m.Fields = map[string]string{"logger": "core"}
 	if got := streamRaw(t, "lvl", m); got != "[warning] hello core\n" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// A template that dumps the whole message prints the old keys only when no rules are used.
+func TestRawToJSONWithoutLevelAndFields(t *testing.T) {
+	t.Setenv("RAW_FORMAT", "{{ toJSON . }}\n")
+	m := newTestMessage("hello")
+	got := streamRaw(t, "tojson", m)
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(got), &keys); err != nil {
+		t.Fatal(err, got)
+	}
+	for _, k := range []string{"Level", "Fields", "Untraced"} {
+		if _, ok := keys[k]; ok {
+			t.Errorf("key %s in %s", k, got)
+		}
+	}
+	m = newTestMessage("hello")
+	m.Level, m.Fields, m.Untraced = "warning", map[string]string{"a": "b"}, true
+	got = streamRaw(t, "tojson2", m)
+	if !strings.Contains(got, `"Level":"warning"`) || !strings.Contains(got, `"Fields"`) || strings.Contains(got, "Untraced") {
+		t.Errorf("with level and fields: %s", got)
 	}
 }

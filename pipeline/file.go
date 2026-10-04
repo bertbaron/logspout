@@ -450,3 +450,6 @@ func ruleIssue(r *Rule, node *yaml.Node, err error) Issue {
 	is.Message = msg
 	return is
 }
+
+// ReadFile reads a rule file with the same checks as LoadFile: regular file, at most MaxFileSize.
+func ReadFile(path string) ([]byte, error) { return readLimited(path) }

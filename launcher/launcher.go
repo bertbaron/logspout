@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gliderlabs/logspout/ingress"
 	"github.com/gliderlabs/logspout/journal"
 	"github.com/gliderlabs/logspout/pipeline"
 	"github.com/gliderlabs/logspout/router"
@@ -87,6 +88,8 @@ type Options struct {
 	Version          string
 	// UseJournal switches logspout to the journal log source. Defaults to router.UseJournalPump with journal.Open.
 	UseJournal func()
+	// IngressAddr is where the Home Assistant ingress listener binds. Empty means no listener.
+	IngressAddr string
 }
 
 // Run loads the Home Assistant config, configures the environment, and starts Logspout.
@@ -128,8 +131,12 @@ func RunWithRunner(opts Options, start func(runner.Options) error) error {
 		}
 	}
 
-	// The env option may also set DEFAULT_RULES and EXCLUDE_CONTAINERS, so build from the final environment.
-	defer installPipeline(config).Stop()
+	// The env option may also set DEFAULT_RULES, EXCLUDE_CONTAINERS, PIPELINE_FILE and DEBUG_PIPELINE, so build from the final environment.
+	watcher := installPipeline(config)
+	defer watcher.Stop()
+	if opts.IngressAddr != "" {
+		defer startIngress(opts.IngressAddr, watcher)()
+	}
 
 	if logSource == logSourceJournal {
 		log.Println("# log source: journald")
@@ -162,6 +169,18 @@ func installPipeline(config Config) *pipeline.Watcher {
 	w.Reload()
 	w.Start()
 	return w
+}
+
+// startIngress serves the web UI in the background and returns the stop function.
+// A port that cannot be bound is logged and never stops logging.
+func startIngress(addr string, w *pipeline.Watcher) (stop func()) {
+	srv := &ingress.Server{Watcher: w}
+	go func() {
+		if err := srv.ListenAndServe(addr); err != nil {
+			log.Printf("ERROR: web interface (ingress) not available on %s: %v", addr, err)
+		}
+	}()
+	return srv.Close
 }
 
 // fileEnv gives the rule file validation the names of the configured routes.

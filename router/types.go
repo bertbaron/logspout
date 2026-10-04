@@ -57,9 +57,11 @@ type Message struct {
 	Data      string
 	Time      time.Time
 	// Level is empty when unknown; adapters then derive it from Source.
-	Level string
+	Level string `json:",omitempty"`
 	// Fields are extra fields set by pipeline rules.
-	Fields map[string]string
+	Fields map[string]string `json:",omitempty"`
+	// Untraced is set by the pipeline debug trace on logspout's own trace lines, so they are never traced.
+	Untraced bool `json:"-"`
 }
 
 // Route represents what subset of logs should go where

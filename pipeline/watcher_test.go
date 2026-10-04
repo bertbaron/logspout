@@ -86,6 +86,12 @@ func (tw *testWatcher) write(t *testing.T, content string) {
 	}
 }
 
+// poll is what two consecutive polls do after a change: only the second one reloads.
+func (tw *testWatcher) poll() bool {
+	first := tw.Check()
+	return tw.Check() || first
+}
+
 func (tw *testWatcher) count() int {
 	tw.mu.Lock()
 	defer tw.mu.Unlock()
@@ -143,7 +149,7 @@ func TestWatcherReload(t *testing.T) {
 
 	t.Run("valid change is swapped in", func(t *testing.T) {
 		tw.write(t, dropQuiet)
-		if !tw.Check() {
+		if !tw.poll() {
 			t.Fatal("change not noticed")
 		}
 		if dropped(tw.last(), "noisy") || !dropped(tw.last(), "quiet") {
@@ -157,7 +163,7 @@ func TestWatcherReload(t *testing.T) {
 	t.Run("invalid change keeps the last valid pipeline", func(t *testing.T) {
 		applied, before := tw.count(), logs()
 		tw.write(t, "rulez: []\nrules:\n  - name: x\n    when: { match: '(' }\n    drop: true\n")
-		if !tw.Check() {
+		if !tw.poll() {
 			t.Fatal("change not noticed")
 		}
 		if tw.count() != applied || !dropped(tw.last(), "quiet") {
@@ -179,7 +185,7 @@ func TestWatcherReload(t *testing.T) {
 
 	t.Run("fixing the file recovers", func(t *testing.T) {
 		tw.write(t, dropNoisy)
-		tw.Check()
+		tw.poll()
 		if !dropped(tw.last(), "noisy") {
 			t.Error("fixed file not loaded")
 		}
@@ -189,7 +195,7 @@ func TestWatcherReload(t *testing.T) {
 		if err := os.Remove(tw.Path); err != nil {
 			t.Fatal(err)
 		}
-		if !tw.Check() {
+		if !tw.poll() {
 			t.Fatal("delete not noticed")
 		}
 		if tw.last() != nil || tw.applied[len(tw.applied)-1] != nil {
@@ -205,7 +211,7 @@ func TestWatcherReload(t *testing.T) {
 
 	t.Run("create loads it", func(t *testing.T) {
 		tw.write(t, dropQuiet)
-		if !tw.Check() || !dropped(tw.last(), "quiet") {
+		if !tw.poll() || !dropped(tw.last(), "quiet") {
 			t.Error("re-created file not loaded")
 		}
 	})
@@ -227,7 +233,7 @@ func TestWatcherSameMtimeDifferentSize(t *testing.T) {
 	if err := os.Chtimes(tw.Path, info.ModTime(), info.ModTime()); err != nil {
 		t.Fatal(err)
 	}
-	if !tw.Check() || !dropped(tw.last(), "quiet") {
+	if !tw.poll() || !dropped(tw.last(), "quiet") {
 		t.Error("edit with unchanged mtime missed")
 	}
 }
@@ -278,7 +284,7 @@ func TestWatcherNoFileNoOptions(t *testing.T) {
 	}
 
 	tw.write(t, dropNoisy)
-	if !tw.Check() || !dropped(tw.last(), "noisy") {
+	if !tw.poll() || !dropped(tw.last(), "noisy") {
 		t.Error("late file not loaded")
 	}
 }
@@ -304,7 +310,7 @@ func TestWatcherInvalidAtStartup(t *testing.T) {
 		t.Error("old restart advice")
 	}
 	tw.write(t, dropNoisy)
-	tw.Check()
+	tw.poll()
 	if tw.last().Summary() == "" || !strings.Contains(tw.last().Summary(), "1 user rules") {
 		t.Error("fixed file not loaded")
 	}
@@ -498,7 +504,7 @@ func TestInvalidFileMessageWithoutEarlierVersion(t *testing.T) {
 	tw := newTestWatcher(t, &bad, Options{})
 	tw.Reload()
 	tw.write(t, "rulez: [1]\n")
-	tw.Check()
+	tw.poll()
 	if strings.Contains(logs(), "previous rules stay active") || strings.Count(logs(), "add-on options only") != 2 {
 		t.Errorf("log:\n%s", logs())
 	}
@@ -560,5 +566,103 @@ func TestDebugTraceRateLimit(t *testing.T) {
 	got := logs()
 	if !strings.Contains(got, "pipeline trace: suppressed 450 lines") || strings.Count(got, "pipeline trace: global") != maxTraceLinesPerSecond+1 {
 		t.Errorf("after the window:\n%s", got[len(got)-300:])
+	}
+}
+
+// Also a change with an old modification time, and a vanished file, need two equal polls.
+func TestWatcherAlwaysTwoPolls(t *testing.T) {
+	captureLog(t)
+	content := dropNoisy
+	tw := newTestWatcher(t, &content, Options{})
+	tw.Reload()
+
+	tw.write(t, dropQuiet)
+	if tw.Check() || !dropped(tw.last(), "noisy") {
+		t.Fatal("old change loaded at first sight")
+	}
+	if !tw.Check() || !dropped(tw.last(), "quiet") {
+		t.Fatal("not loaded at the second poll")
+	}
+
+	must(t, os.Remove(tw.Path))
+	if tw.Check() || !dropped(tw.last(), "quiet") {
+		t.Fatal("missing file acted on at first sight")
+	}
+	// The file comes back before the second poll, as with a save by rename.
+	tw.write(t, dropNoisy)
+	if tw.Check() || !dropped(tw.last(), "quiet") {
+		t.Fatal("a different state is a new first sight")
+	}
+	if !tw.Check() || !dropped(tw.last(), "noisy") {
+		t.Fatal("not loaded")
+	}
+
+	must(t, os.Remove(tw.Path))
+	tw.Check()
+	if !tw.Check() || tw.last() != nil {
+		t.Fatal("missing file on two polls does not remove the rules")
+	}
+}
+
+func TestDebugNoRulesLogsOnce(t *testing.T) {
+	logs := captureLog(t)
+	tw := newTestWatcher(t, nil, Options{Debug: true})
+	tw.Reload()
+	if n := strings.Count(logs(), "DEBUG_PIPELINE: no rules active, nothing to trace"); n != 1 {
+		t.Fatalf("%d lines:\n%s", n, logs())
+	}
+	if tw.applied[len(tw.applied)-1] != nil {
+		t.Error("processor installed")
+	}
+
+	logs2 := captureLog(t)
+	tw = newTestWatcher(t, nil, Options{})
+	tw.Reload()
+	if strings.Contains(logs2(), "DEBUG_PIPELINE") {
+		t.Error("line without DEBUG_PIPELINE")
+	}
+}
+
+// A global rule that rewrites the text must not make a trace line traceable at the target stage.
+func TestDebugGlobalSetMessageKeepsQuiet(t *testing.T) {
+	logs := captureLog(t)
+	p, _, err := Build(Options{
+		Debug:   true,
+		Rules:   mustRules(t, "- name: a\n  set: { message: rewritten }\n"),
+		Targets: map[string]RuleSet{"syslog": mustRules(t, "- name: b\n  set: { level: error }\n")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := wmsg(traceMarker + "something")
+	p.Global(m)
+	p.Target("syslog", m)
+	p.Target("gelf", m)
+	if logs() != "" {
+		t.Errorf("trace line was traced:\n%s", logs())
+	}
+}
+
+func TestWatcherStatus(t *testing.T) {
+	captureLog(t)
+	content := dropNoisy
+	tw := newTestWatcher(t, &content, Options{DefaultRules: "latest"})
+	if tw.Status().Loaded {
+		t.Error("loaded before Reload")
+	}
+	tw.Reload()
+	st := tw.Status()
+	c := st.Pipeline.Counts()
+	if !st.Loaded || !st.Valid || len(st.Errors) != 0 || c.Global != 1 || c.Defaults != LatestDefaults() || c.DefaultsRules == 0 {
+		t.Fatalf("%+v %+v", st, c)
+	}
+	tw.write(t, "rulez: 1\n")
+	tw.poll()
+	st = tw.Status()
+	if st.Valid || len(st.Errors) != 1 || st.Pipeline.Counts().Global != 1 {
+		t.Fatalf("invalid file: %+v", st)
+	}
+	if (*Pipeline)(nil).Counts().Targets == nil {
+		t.Error("nil pipeline counts")
 	}
 }
