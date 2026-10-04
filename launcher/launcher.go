@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"regexp"
+	"strings"
 
 	"github.com/gliderlabs/logspout/journal"
+	"github.com/gliderlabs/logspout/pipeline"
 	"github.com/gliderlabs/logspout/router"
 	"github.com/gliderlabs/logspout/runner"
 )
@@ -24,6 +27,9 @@ const (
 	DefaultRouteStorePath = "/data/routes"
 	defaultHostname       = "homeassistant"
 
+	defaultRulesKey      = "DEFAULT_RULES"
+	excludeContainersKey = "EXCLUDE_CONTAINERS"
+
 	logSourceKey     = "LOG_SOURCE"
 	logSourceDocker  = "docker"
 	logSourceJournal = "journal"
@@ -31,7 +37,10 @@ const (
 
 var envNameRegexp = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// DEFAULT_RULES and EXCLUDE_CONTAINERS are managed but not reserved: the env option may set them.
 var managedEnvironmentKeys = []string{
+	defaultRulesKey,
+	excludeContainersKey,
 	"DOCKER_HOST",
 	"INACTIVITY_TIMEOUT",
 	"ROUTESPATH",
@@ -51,10 +60,12 @@ var reservedEnvironmentKeys = map[string]struct{}{
 
 // Config is the Home Assistant addon configuration persisted in /data/options.json.
 type Config struct {
-	Env       []EnvironmentEntry `json:"env"`
-	Hostname  string             `json:"hostname"`
-	Routes    []string           `json:"routes"`
-	StripANSI bool               `json:"strip_ansi"`
+	Env               []EnvironmentEntry `json:"env"`
+	Hostname          string             `json:"hostname"`
+	Routes            []string           `json:"routes"`
+	StripANSI         bool               `json:"strip_ansi"`
+	DefaultRules      string             `json:"default_rules"`
+	ExcludeContainers []string           `json:"exclude_containers"`
 }
 
 // EnvironmentEntry models a name/value item from the addon config.
@@ -112,6 +123,9 @@ func RunWithRunner(opts Options, start func(runner.Options) error) error {
 		}
 	}
 
+	// The env option may also set DEFAULT_RULES and EXCLUDE_CONTAINERS, so build from the final environment.
+	installPipeline()
+
 	if logSource == logSourceJournal {
 		log.Println("# log source: journald")
 		useJournal := opts.UseJournal
@@ -125,6 +139,76 @@ func RunWithRunner(opts Options, start func(runner.Options) error) error {
 		RouteURIs: config.Routes,
 		Version:   opts.Version,
 	})
+}
+
+// installPipeline builds the pipeline from the environment and activates it.
+// Without rules nothing is installed, so the pumps keep their plain code path.
+// A typo in the level 1 options must never stop logging: an invalid option is
+// logged as an error and ignored.
+func installPipeline() {
+	opts := pipelineOptionsFromEnv(os.Getenv)
+	p, unknown, err := pipeline.Build(opts)
+	if err != nil {
+		log.Printf("ERROR: pipeline disabled: %v", err)
+		p, _, _ = pipeline.Build(pipeline.Options{})
+	}
+	for _, name := range unknown {
+		log.Printf("warning: no default rule named %q", name)
+	}
+	log.Println(p.Summary())
+	if p.Empty() {
+		router.SetProcessor(nil)
+	} else {
+		router.SetProcessor(p)
+	}
+}
+
+func pipelineOptionsFromEnv(getenv func(string) string) pipeline.Options {
+	var opts pipeline.Options
+	if v := strings.TrimSpace(getenv(defaultRulesKey)); v != "" {
+		if err := validateDefaultRules(v); err != nil {
+			log.Printf("ERROR: %s ignored, starting without default rules: %v", defaultRulesKey, err)
+		} else {
+			opts.DefaultRules = v
+		}
+	}
+	if globs := splitGlobs(getenv(excludeContainersKey)); len(globs) > 0 {
+		if err := validateExcludeContainers(globs); err != nil {
+			log.Printf("ERROR: %s ignored, no containers are excluded: %v", excludeContainersKey, err)
+		} else {
+			opts.ExcludeContainers = globs
+		}
+	}
+	return opts
+}
+
+// splitGlobs splits a comma separated list, trims spaces and skips empty entries.
+func splitGlobs(v string) []string {
+	return cleanGlobs(strings.Split(v, ","))
+}
+
+func cleanGlobs(in []string) []string {
+	var out []string
+	for _, g := range in {
+		if g = strings.TrimSpace(g); g != "" {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+func validateDefaultRules(v string) error {
+	_, err := pipeline.ResolveDefaults(v)
+	return err
+}
+
+func validateExcludeContainers(globs []string) error {
+	for _, g := range globs {
+		if _, err := path.Match(g, ""); err != nil {
+			return fmt.Errorf("invalid glob %q: %w", g, err)
+		}
+	}
+	return nil
 }
 
 // LoadConfig reads and validates the Home Assistant addon options file.
@@ -205,6 +289,12 @@ func BuildEnvironment(config Config, dockerSocketPath, routeStorePath string) (m
 	}
 	if config.StripANSI {
 		env["STRIP_ANSI"] = "true"
+	}
+	if v := strings.TrimSpace(config.DefaultRules); v != "" && v != "off" {
+		env[defaultRulesKey] = v
+	}
+	if globs := cleanGlobs(config.ExcludeContainers); len(globs) > 0 {
+		env[excludeContainersKey] = strings.Join(globs, ",")
 	}
 	for _, entry := range config.Env {
 		env[entry.Name] = entry.Value

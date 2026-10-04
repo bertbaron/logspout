@@ -142,11 +142,11 @@ rules:
 
   # Grafana and InfluxDB use logfmt: logger=settings t=... level=info msg="text"
   - name: grafana-logfmt
-    when: {container: 'addon_*_grafana', match: '(^|\s)(level|lvl)='}
+    when: {container: 'addon_*_grafana', match: '^(level|lvl)=|^[A-Za-z_][\w.-]*=.*\s(level|lvl)='}
     parse: logfmt
     stop: true
   - name: influxdb-logfmt
-    when: {container: 'addon_*_influxdb', match: '(^|\s)(level|lvl)='}
+    when: {container: 'addon_*_influxdb', match: '^(level|lvl)=|^[A-Za-z_][\w.-]*=.*\s(level|lvl)='}
     parse: logfmt
     stop: true
 

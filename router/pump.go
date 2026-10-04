@@ -404,13 +404,24 @@ func newContainerPump(container *docker.Container, stdout, stderr io.Reader) *co
 }
 
 func (cp *containerPump) send(msg *Message) {
+	proc := CurrentProcessor()
+	if proc != nil && proc.Global(msg) {
+		return
+	}
 	cp.Lock()
 	defer cp.Unlock()
 	for logstream, route := range cp.logstreams {
 		if !route.MatchMessage(msg) {
 			continue
 		}
-		logstream <- msg
+		out := msg
+		if proc != nil {
+			var dropped bool
+			if out, dropped = proc.Target(route.Name, msg); dropped {
+				continue
+			}
+		}
+		logstream <- out
 	}
 }
 

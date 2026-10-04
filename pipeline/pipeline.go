@@ -1,0 +1,134 @@
+package pipeline
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/gliderlabs/logspout/router"
+)
+
+// Options select what Build compiles.
+type Options struct {
+	// DefaultRules is the `default_rules` selector: "", "off", "latest" or "vN".
+	DefaultRules string
+	// DisabledDefaults names shipped rules to switch off.
+	DisabledDefaults []string
+	// ExcludeContainers are container name globs that are dropped for all targets.
+	ExcludeContainers []string
+	// Rules are the user's global rules.
+	Rules RuleSet
+	// Targets are the rules per route name.
+	Targets map[string]RuleSet
+}
+
+// Pipeline is an immutable compiled pipeline. It implements router.Processor
+// and is safe for concurrent use.
+type Pipeline struct {
+	version  string // resolved default set, "" when off
+	defaults *Compiled
+	exclude  *Compiled
+	global   *Compiled
+	targets  map[string]*Compiled
+
+	excluded []string
+}
+
+var _ router.Processor = (*Pipeline)(nil)
+
+// Build compiles the options. unknownDisabled lists names in
+// DisabledDefaults that are not in the selected set; they are not applied.
+func Build(o Options) (p *Pipeline, unknownDisabled []string, err error) {
+	p = &Pipeline{excluded: o.ExcludeContainers}
+	if p.version, err = ResolveDefaults(o.DefaultRules); err != nil {
+		return nil, nil, err
+	}
+	if p.version != "" {
+		if p.defaults, unknownDisabled, err = CompileDefaults(p.version, o.DisabledDefaults); err != nil {
+			return nil, nil, err
+		}
+	}
+	if len(o.ExcludeContainers) > 0 {
+		rule := Rule{
+			Name: "exclude_containers",
+			When: &Condition{Container: StringList(o.ExcludeContainers)},
+			Drop: true,
+		}
+		c, err := Compile(RuleSet{rule})
+		if err != nil {
+			return nil, nil, fmt.Errorf("exclude_containers: %w", err)
+		}
+		p.exclude = c.WithName("exclude_containers")
+	}
+	if len(o.Rules) > 0 {
+		c, err := Compile(o.Rules)
+		if err != nil {
+			return nil, nil, fmt.Errorf("rules: %w", err)
+		}
+		p.global = c.WithName("rules")
+	}
+	for name, rs := range o.Targets {
+		if len(rs) == 0 {
+			continue
+		}
+		c, err := Compile(rs)
+		if err != nil {
+			return nil, nil, fmt.Errorf("targets.%s: %w", name, err)
+		}
+		if p.targets == nil {
+			p.targets = make(map[string]*Compiled)
+		}
+		p.targets[name] = c.WithName("targets/" + name)
+	}
+	return p, unknownDisabled, nil
+}
+
+// Empty reports whether the pipeline has no rules at all.
+func (p *Pipeline) Empty() bool {
+	return p == nil || (p.defaults == nil && p.exclude == nil && p.global == nil && len(p.targets) == 0)
+}
+
+// Global runs the excluded containers, the default rules and the global rules.
+// Excluded containers go first: the result is the same and it saves the
+// classification. The default list is separate from the user rules: a default
+// `stop` must not skip them.
+func (p *Pipeline) Global(m *router.Message) (dropped bool) {
+	return p.exclude.Apply(m, nil) || p.defaults.Apply(m, nil) || p.global.Apply(m, nil)
+}
+
+// Target runs the rules of one route on a copy of m. A route without rules
+// gets m itself, without a copy.
+func (p *Pipeline) Target(routeName string, m *router.Message) (*router.Message, bool) {
+	c := p.targets[routeName]
+	if c == nil {
+		return m, false
+	}
+	out := CloneMessage(m)
+	if c.Apply(out, nil) {
+		return nil, true
+	}
+	return out, false
+}
+
+// Summary is the one-line description that is logged on load.
+func (p *Pipeline) Summary() string {
+	defaults := "off"
+	if p.version != "" {
+		defaults = p.version
+	}
+	rules := p.defaults.Len() + p.exclude.Len() + p.global.Len()
+	var targets []string
+	for name, c := range p.targets {
+		rules += c.Len()
+		targets = append(targets, fmt.Sprintf("%s(%d)", name, c.Len()))
+	}
+	sort.Strings(targets)
+	list := func(s []string) string {
+		if len(s) == 0 {
+			return "none"
+		}
+		return strings.Join(s, ",")
+	}
+	return fmt.Sprintf("pipeline: default rules %s, %d rules, excluded containers: %s, targets with rules: %s",
+		defaults, rules, list(p.excluded), list(targets))
+}

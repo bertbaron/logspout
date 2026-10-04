@@ -176,6 +176,10 @@ func (p *JournalPump) Route(route *Route, logstream chan *Message) {
 }
 
 func (p *JournalPump) dispatch(msg *Message) {
+	proc := CurrentProcessor()
+	if proc != nil && proc.Global(msg) {
+		return
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for logstream, route := range p.logstreams {
@@ -185,6 +189,13 @@ func (p *JournalPump) dispatch(msg *Message) {
 		if !route.MatchMessage(msg) {
 			continue
 		}
-		logstream <- msg
+		out := msg
+		if proc != nil {
+			var dropped bool
+			if out, dropped = proc.Target(route.Name, msg); dropped {
+				continue
+			}
+		}
+		logstream <- out
 	}
 }

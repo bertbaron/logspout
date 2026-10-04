@@ -59,6 +59,9 @@ addon_a0d7b954_unknownaddon	stdout	free text line	-
 addon_a0d7b954_unknownaddon	stdout	2026-10-04 12:00:00.123 WARNING (MainThread) [x] ha style not matched for add-ons	-	
 addon_a0d7b954_grafana	stdout	[12:00:00] INFO: Starting Grafana	info	
 addon_a0d7b954_influxdb	stdout	[12:00:00] INFO: Starting InfluxDB	info	
+addon_a0d7b954_grafana	stdout	[12:00:00] INFO: Using level=debug for plugins	info	
+addon_a0d7b954_influxdb	stdout	[12:00:00] INFO: Using level=debug for logs	info	
 addon_5c53de3b_esphome	stdout	[12:00:00][VV][uart:010]: Very verbose byte	debug	logger=uart
 addon_core_ssh	stdout	cont-init: info: running /etc/cont-init.d/00-banner.sh	info	
 addon_core_ssh	stdout	services-up: warning: slow start	warning	
+addon_a0d7b954_grafana	stdout	level=warn msg="first key"	warning	

@@ -11,7 +11,7 @@ import (
 
 func compileV1(t *testing.T, disabled ...string) *Compiled {
 	t.Helper()
-	rules, err := DefaultRules("v1", disabled)
+	rules, err := defaultRules("v1", disabled)
 	if err != nil {
 		t.Fatal(err)
 	}

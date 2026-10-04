@@ -287,6 +287,11 @@ func (r *compiledRule) run(s *state, v *vars, rt *RuleTrace) {
 			rt.Actions = append(rt.Actions, a)
 		}
 	}
+	changed := func() {
+		if rt != nil {
+			rt.Changed = true
+		}
+	}
 	m := s.m
 	if r.parse != nil {
 		if res, ok := r.parse(s.message()); ok {
@@ -295,6 +300,7 @@ func (r *compiledRule) run(s *state, v *vars, rt *RuleTrace) {
 				setMessageField(m, kv[0], kv[1])
 			}
 			note("parse " + r.parser + " level=" + res.level)
+			changed()
 		} else {
 			note("parse " + r.parser + " no match")
 		}
@@ -311,20 +317,24 @@ func (r *compiledRule) run(s *state, v *vars, rt *RuleTrace) {
 				if l, ok := router.NormalizeLevel(vals[i]); ok {
 					m.Level = l
 					note("set level=" + l)
+					changed()
 				} else {
 					note("set level ignored, unknown value " + quote(vals[i]))
 				}
 			case setMessage:
 				m.Data = vals[i]
 				note("set message")
+				changed()
 			case setField:
 				setMessageField(m, a.field, vals[i])
 				note("set " + a.key)
+				changed()
 			}
 		}
 	}
 	if r.drop {
 		note("drop")
+		changed()
 	}
 	if r.stop {
 		note("stop")

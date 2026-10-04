@@ -53,11 +53,11 @@ func TestResolveDefaults(t *testing.T) {
 
 func TestDefaultRulesDisable(t *testing.T) {
 	v1 := DefaultVersions()[0]
-	all, err := DefaultRules(v1, nil)
+	all, err := defaultRules(v1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	some, err := DefaultRules(v1, []string{all[0].Name, all[2].Name})
+	some, err := defaultRules(v1, []string{all[0].Name, all[2].Name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,12 +69,12 @@ func TestDefaultRulesDisable(t *testing.T) {
 			t.Errorf("rule %q not disabled", r.Name)
 		}
 	}
-	if _, err := DefaultRules(v1, []string{"no-such-rule"}); err == nil || !strings.Contains(err.Error(), "no-such-rule") {
+	if _, err := defaultRules(v1, []string{"no-such-rule"}); err == nil || !strings.Contains(err.Error(), "no-such-rule") {
 		t.Errorf("unknown disabled name: %v", err)
 	}
 	for _, v := range []string{"v0", "V1", "v01", "v1.yaml", "../defaults/v1", "v1/", "", "latest", "off", "v999"} {
-		if _, err := DefaultRules(v, nil); err == nil {
-			t.Errorf("DefaultRules(%q) accepted", v)
+		if _, err := defaultRules(v, nil); err == nil {
+			t.Errorf("defaultRules(%q) accepted", v)
 		}
 	}
 	last := all[len(all)-1].Name
@@ -92,7 +92,7 @@ func TestDefaultRulesDisable(t *testing.T) {
 	for i, r := range all {
 		everything[i] = r.Name
 	}
-	rs, err := DefaultRules("v1", everything)
+	rs, err := defaultRules("v1", everything)
 	if err != nil || len(rs) != 0 {
 		t.Fatalf("disable all: %d rules, %v", len(rs), err)
 	}
@@ -101,16 +101,16 @@ func TestDefaultRulesDisable(t *testing.T) {
 	}
 
 	for _, bad := range [][]string{{"nope"}, {"addon-bashio", "nope"}, {"ADDON-BASHIO"}, {""}, {" addon-bashio"}} {
-		if _, err := DefaultRules(v1, bad); err == nil {
+		if _, err := defaultRules(v1, bad); err == nil {
 			t.Errorf("disabled %q: no error", bad)
 		}
 	}
 	// Duplicate names in the list are harmless.
-	if rs, err := DefaultRules(v1, []string{"addon-bashio", "addon-bashio"}); err != nil || len(rs) != len(all)-1 {
+	if rs, err := defaultRules(v1, []string{"addon-bashio", "addon-bashio"}); err != nil || len(rs) != len(all)-1 {
 		t.Errorf("duplicate disable: %d, %v", len(rs), err)
 	}
 	// Calling twice must not share state.
-	again, _ := DefaultRules(v1, nil)
+	again, _ := defaultRules(v1, nil)
 	if len(again) != len(all) {
 		t.Errorf("rules changed between calls")
 	}
@@ -134,7 +134,7 @@ func TestParseDefaultsStrict(t *testing.T) {
 func TestEmbeddedDefaultsValid(t *testing.T) {
 	for _, v := range DefaultVersions() {
 		t.Run(v, func(t *testing.T) {
-			rules, err := DefaultRules(v, nil)
+			rules, err := defaultRules(v, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -220,7 +220,7 @@ func readDefaultFixtures(t *testing.T, version string) []fixtureLine {
 
 func TestDefaultFixtures(t *testing.T) {
 	for _, v := range DefaultVersions() {
-		rules, err := DefaultRules(v, nil)
+		rules, err := defaultRules(v, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -240,7 +240,7 @@ func TestDefaultFixtures(t *testing.T) {
 				t.Errorf("%s %q: dropped", fl.container, fl.line)
 			}
 			for _, rt := range tr.Rules {
-				if rt.Matched {
+				if rt.Matched && rt.Changed {
 					matched[rt.Name] = true
 				}
 			}
@@ -272,7 +272,7 @@ func TestCompileDefaults(t *testing.T) {
 	if !reflect.DeepEqual(unknown, []string{"also-missing", "no-such-rule"}) {
 		t.Errorf("unknown = %v", unknown)
 	}
-	all, _ := DefaultRules(v, nil)
+	all, _ := defaultRules(v, nil)
 	if c.Len() != len(all)-1 {
 		t.Errorf("compiled %d rules, want %d (unknown names must not drop the set)", c.Len(), len(all)-1)
 	}
@@ -342,5 +342,28 @@ func TestWithName(t *testing.T) {
 	c.Apply(&router.Message{Data: "x"}, &tr)
 	if len(tr.Rules) != 2 || tr.Rules[0].List != "n" || tr.Rules[1].List != "" {
 		t.Errorf("trace %+v", tr.Rules)
+	}
+}
+
+// A rule whose gate matches but whose parser fails, or whose level is
+// ignored, must not count as covered.
+func TestTraceChangedParserFails(t *testing.T) {
+	c, err := Compile(RuleSet{
+		{Name: "gate-too-wide", When: &Condition{Container: StringList{"x"}}, Parse: "logfmt"},
+		{Name: "ignored-level", Set: map[string]string{"level": "${message}"}},
+		{Name: "ok", Set: map[string]string{"fields.a": "b"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tr Trace
+	c.Apply(defMsg("x", "stdout", "not logfmt"), &tr)
+	if len(tr.Rules) != 3 {
+		t.Fatalf("trace %+v", tr.Rules)
+	}
+	for i, want := range []bool{false, false, true} {
+		if !tr.Rules[i].Matched || tr.Rules[i].Changed != want {
+			t.Errorf("rule %d: %+v, want changed=%v", i, tr.Rules[i], want)
+		}
 	}
 }

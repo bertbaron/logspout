@@ -128,13 +128,13 @@ func selectDefaults(version string, disabled []string) (rules RuleSet, unknown [
 	return rules, unknown, nil
 }
 
-// DefaultRules returns the rules of a default set without the rules named in
+// defaultRules returns the rules of a default set without the rules named in
 // disabled. A name that is not in the set is an error.
 //
 // Default rules use `stop`. Apply them as their own Compiled list (see
 // CompileDefaults) before the user's rules, never in one list with them, or a
 // default `stop` would skip the user's rules.
-func DefaultRules(version string, disabled []string) (RuleSet, error) {
+func defaultRules(version string, disabled []string) (RuleSet, error) {
 	rules, unknown, err := selectDefaults(version, disabled)
 	if err != nil {
 		return nil, err

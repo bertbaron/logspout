@@ -4,9 +4,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/gliderlabs/logspout/router"
 	"github.com/gliderlabs/logspout/runner"
 )
 
@@ -261,5 +263,130 @@ func TestRunWithRunnerRouteNameFromEnvOption(t *testing.T) {
 		"env":[{"name":"MY_ROUTE","value":"dup"}]}`)
 	if err == nil && started {
 		t.Error("duplicate explicit name via env option was not detected by the launcher")
+	}
+}
+
+func TestBuildEnvironmentPipelineOptions(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      Config
+		wantDefault string
+		wantExclude string
+	}{
+		{"absent", Config{}, "", ""},
+		{"off", Config{DefaultRules: "off"}, "", ""},
+		{"empty list", Config{ExcludeContainers: []string{}}, "", ""},
+		{"latest", Config{DefaultRules: "latest"}, "latest", ""},
+		{"v1", Config{DefaultRules: "v1"}, "v1", ""},
+		{"exclude", Config{ExcludeContainers: []string{"homeassistant", "addon_*_mosquitto"}}, "", "homeassistant,addon_*_mosquitto"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env, err := BuildEnvironment(tt.config, "", "/tmp/routes")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, hasDefault := env["DEFAULT_RULES"]
+			if got != tt.wantDefault || hasDefault != (tt.wantDefault != "") {
+				t.Errorf("DEFAULT_RULES = %q (set %v), want %q", got, hasDefault, tt.wantDefault)
+			}
+			got, hasExclude := env["EXCLUDE_CONTAINERS"]
+			if got != tt.wantExclude || hasExclude != (tt.wantExclude != "") {
+				t.Errorf("EXCLUDE_CONTAINERS = %q (set %v), want %q", got, hasExclude, tt.wantExclude)
+			}
+		})
+	}
+}
+
+// Without the new options the environment is exactly what it was before.
+func TestBuildEnvironmentWithoutPipelineOptionsAddsNothing(t *testing.T) {
+	env, err := BuildEnvironment(Config{Hostname: "h"}, "/run/docker.sock", "/data/routes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"INACTIVITY_TIMEOUT": DefaultInactivityTimeout,
+		"ROUTESPATH":         "/data/routes",
+		"SYSLOG_HOSTNAME":    "h",
+		"DOCKER_HOST":        "unix:///run/docker.sock",
+	}
+	if !reflect.DeepEqual(env, want) {
+		t.Errorf("env = %v, want %v", env, want)
+	}
+}
+
+// Typos in the level 1 options must not stop logging.
+func TestPipelineOptionsFromEnvIsLenient(t *testing.T) {
+	tests := []struct {
+		name        string
+		defaults    string
+		exclude     string
+		wantDefault string
+		wantExclude []string
+	}{
+		{"trim and skip empty", " v1 ", " a* , ,b,", "v1", []string{"a*", "b"}},
+		{"only blanks", "", " , ", "", nil},
+		{"unknown default", "v99", "a", "", []string{"a"}},
+		{"uppercase default", "Latest", "", "", nil},
+		{"bad glob drops the option", "latest", "a,b[", "latest", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := map[string]string{"DEFAULT_RULES": tt.defaults, "EXCLUDE_CONTAINERS": tt.exclude}
+			got := pipelineOptionsFromEnv(func(k string) string { return env[k] })
+			if got.DefaultRules != tt.wantDefault || !reflect.DeepEqual(got.ExcludeContainers, tt.wantExclude) {
+				t.Errorf("got %q %q, want %q %q", got.DefaultRules, got.ExcludeContainers, tt.wantDefault, tt.wantExclude)
+			}
+		})
+	}
+}
+
+func TestBuildEnvironmentTrimsExcludeContainers(t *testing.T) {
+	env, err := BuildEnvironment(Config{ExcludeContainers: []string{" a ", "", "  "}, DefaultRules: " v1 "}, "", "/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["EXCLUDE_CONTAINERS"] != "a" || env["DEFAULT_RULES"] != "v1" {
+		t.Errorf("env %v", env)
+	}
+	env, _ = BuildEnvironment(Config{ExcludeContainers: []string{" ", ""}}, "", "/r")
+	if _, ok := env["EXCLUDE_CONTAINERS"]; ok {
+		t.Error("blank entries set EXCLUDE_CONTAINERS")
+	}
+}
+
+func TestRunWithRunnerPipeline(t *testing.T) {
+	tests := []struct {
+		name       string
+		options    string
+		wantActive bool
+	}{
+		{"no options", `{"routes":["gelf://g:1"]}`, false},
+		{"off", `{"default_rules":"off"}`, false},
+		{"latest", `{"default_rules":"latest"}`, true},
+		{"exclude", `{"exclude_containers":["homeassistant"]}`, true},
+		{"env option", `{"env":[{"name":"EXCLUDE_CONTAINERS","value":"a,b"}]}`, true},
+		{"env option wins", `{"default_rules":"v1","env":[{"name":"DEFAULT_RULES","value":"off"}]}`, false},
+		{"invalid option starts without it", `{"default_rules":"v99"}`, false},
+		{"invalid env option", `{"env":[{"name":"DEFAULT_RULES","value":"bogus"}]}`, false},
+		{"invalid env glob", `{"env":[{"name":"EXCLUDE_CONTAINERS","value":"a["}]}`, false},
+		{"invalid glob in option", `{"exclude_containers":["a["]}`, false},
+		{"blank entries", `{"exclude_containers":[" ",""]}`, false},
+		{"one bad option, one good", `{"default_rules":"v99","exclude_containers":["a"]}`, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DEFAULT_RULES", "stale")
+			t.Setenv("EXCLUDE_CONTAINERS", "stale")
+			router.SetProcessor(nil)
+			t.Cleanup(func() { router.SetProcessor(nil) })
+			_, started, err := runWithOptionsJSON(t, tt.options)
+			if err != nil || !started {
+				t.Fatalf("start-up failed: started=%v err=%v", started, err)
+			}
+			if active := router.CurrentProcessor() != nil; active != tt.wantActive {
+				t.Errorf("processor active = %v, want %v", active, tt.wantActive)
+			}
+		})
 	}
 }
