@@ -79,7 +79,7 @@ func TestEdgeNilContainer(t *testing.T) {
 	if m.Fields["c"] != "n|" {
 		t.Errorf("got %q", m.Fields["c"])
 	}
-	// Container "*" glob does not match a missing container name only via nil: documents behavior.
+	// A nil container has name "", which a `*` glob matches.
 	m = &router.Message{Data: "x"}
 	if _, d := apply(t, dropRule(&Condition{Container: StringList{"*"}}, nil), m); !d {
 		t.Error("glob * should match a nil container (empty name)")
@@ -292,7 +292,7 @@ func TestEdgeLevelOperators(t *testing.T) {
 	// a non-normalized upstream level never matches, not even <, <= or >=
 	for _, cond := range []string{"=info", "<critical", "<=critical", ">=debug", ">debug"} {
 		if mustCompile(t, dropRule(&Condition{Level: cond}, nil)).Apply(&router.Message{Level: "WARN"}, nil) {
-			t.Logf("note: unnormalized level WARN matches %q", cond)
+			t.Errorf("unnormalized level WARN must not match %q", cond)
 		}
 	}
 	// explicit Level wins over Source
@@ -511,7 +511,7 @@ func TestEdgeANSI(t *testing.T) {
 	}
 }
 
-func TestEdgeReloadSwapConcurrent(t *testing.T) {
+func TestConcurrentCompileAndApply(t *testing.T) {
 	// Compiled values are immutable; applying one while another is created must be race free.
 	var cur sync.Map
 	cur.Store("c", mustCompile(t, RuleSet{{When: &Condition{Match: `(?P<x>a)`}, Set: map[string]string{"fields.x": "${x}"}}}))

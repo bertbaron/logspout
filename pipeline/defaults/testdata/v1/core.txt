@@ -1,0 +1,43 @@
+# container<TAB>source<TAB>line<TAB>expected level (- = unclassified)<TAB>expected fields (k=v;k=v). \e is ESC, \t is a tab.
+homeassistant	stdout	2026-10-04 12:00:00.123 WARNING (MainThread) [homeassistant.components.mqtt.client] Disconnected from MQTT	warning	thread=MainThread;logger=homeassistant.components.mqtt.client
+homeassistant	stdout	2026-10-04 12:00:01.001 ERROR (SyncWorker_3) [homeassistant.components.sensor] Error doing job	error	thread=SyncWorker_3;logger=homeassistant.components.sensor
+homeassistant	stdout	2026-10-04 12:00:02.500 INFO (MainThread) [homeassistant.setup] Setup of domain mqtt took 0.3 seconds	info	thread=MainThread;logger=homeassistant.setup
+homeassistant	stderr	Traceback (most recent call last):	-	
+homeassistant	stderr	  File "/usr/src/homeassistant/homeassistant/core.py", line 1, in run	-	
+homeassistant	stdout	2026-10-04 12:00:03.000 FOO (MainThread) [x] unknown level word	-	
+hassio_supervisor	stdout	26-10-04 12:00:00 INFO (MainThread) [supervisor.resolution.check] Starting system checks	info	thread=MainThread;logger=supervisor.resolution.check
+hassio_supervisor	stdout	26-10-04 12:00:00 WARNING (MainThread) [supervisor.api.proxy] Home Assistant API is not reachable	warning	thread=MainThread;logger=supervisor.api.proxy
+hassio_supervisor	stdout	26-10-04 12:00:00 ERROR (MainThread) [supervisor.misc.tasks] Task failed	error	thread=MainThread;logger=supervisor.misc.tasks
+hassio_supervisor	stdout	plain text without timestamp	-	
+hassio_dns	stdout	[INFO] plugin/reload: Running configuration SHA512 = abcdef	info	
+hassio_dns	stdout	[WARNING] plugin/forward: no nameservers found	warning	
+hassio_dns	stdout	[ERROR] plugin/errors: 2 example.com. A: read udp 127.0.0.1:1234->8.8.8.8:53: i/o timeout	error	
+hassio_dns	stdout	CoreDNS-1.11.1	-	
+hassio_dns	stdout	[12:00:00] INFO: Starting CoreDNS	info	
+hassio_audio	stdout	[12:00:00] INFO: Starting PulseAudio	info	
+hassio_audio	stdout	E: [pulseaudio] module-alsa-card.c: Failed to find a working profile.	error	
+hassio_audio	stdout	W: [pulseaudio] alsa-mixer.c: Cannot find fallback mixer	warning	
+hassio_audio	stdout	I: [pulseaudio] main.c: Daemon startup complete	info	
+hassio_audio	stdout	D: [pulseaudio] core.c: Created 0 "Null Output"	debug	
+hassio_audio	stdout	Some other pulse line	-	
+hassio_multicast	stdout	[12:00:00] INFO: Starting mDNS reflector	info	
+hassio_multicast	stdout	[12:00:00] ERROR: socket failed	error	
+hassio_multicast	stdout	avahi-daemon 0.8 starting up.	-	
+hassio_observer	stdout	[12:00:00] INFO: Observer started	info	
+hassio_observer	stdout	[12:00:00] WARNING: Slow response	warning	
+hassio_cli	stdout	[12:00:00] INFO: Starting CLI	info	
+hassio_cli	stdout	[12:00:00] FATAL: crash	critical	
+hassio_cli	stdout	no level here	-	
+hassio_cli	stdout	s6-rc: info: service legacy-services successfully started	info	
+hassio_cli	stdout	s6-svscan: warning: unable to iopause: Resource temporarily unavailable	warning	
+hassio_cli	stdout	s6-rc: fatal: unable to start	critical	
+hassio_cli	stdout	s6-rc: chatter: not a level	-	
+some_other_container	stdout	[12:00:00] INFO: not ours	-	
+some_other_container	stdout	2026-10-04 12:00:00.123 WARNING (MainThread) [x] not ours	-	
+homeassistant	stdout	s6-rc: info: service legacy-services successfully started	info	
+homeassistant	stdout	s6-rc: warning: something odd	warning	
+hassio_supervisor	stdout	services-up: info: copying legacy longrun supervisor (no readiness notification)	info	
+hassio_dns	stdout	cont-init: info: running /etc/cont-init.d/udev.sh	info	
+hassio_audio	stdout	cont-init: error: failed	error	
+hassio_cli	stdout	services-down: info: stopping	info	
+hassio_cli	stdout	cont-init: chatter: not a level	-	

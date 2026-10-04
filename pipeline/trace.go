@@ -16,6 +16,8 @@ type Trace struct {
 // RuleTrace is the outcome of one evaluated rule. Rules after a drop or stop
 // are not evaluated and do not appear.
 type RuleTrace struct {
+	// List is the name of the rule list, for example "defaults/v1". Empty if unnamed.
+	List    string            `json:"list,omitempty"`
 	Index   int               `json:"index"`
 	Name    string            `json:"name"`
 	Matched bool              `json:"matched"`

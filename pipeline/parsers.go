@@ -138,11 +138,10 @@ func parseJSON(text string) (parseResult, bool) {
 	if err := json.Unmarshal([]byte(text), &obj); err != nil {
 		return parseResult{}, false
 	}
-	word, ok := obj.Level.(string)
-	if !ok {
-		if word, ok = obj.Severity.(string); !ok {
-			return parseResult{}, false
-		}
+	word, _ := obj.Level.(string)
+	if _, ok := router.NormalizeLevel(word); !ok {
+		// Some loggers put a non-level in `level` and the real one in `severity`.
+		word, _ = obj.Severity.(string)
 	}
 	logger, _ := obj.Logger.(string)
 	return result(word, "logger", logger)

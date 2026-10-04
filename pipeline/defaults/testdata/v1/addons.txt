@@ -1,0 +1,64 @@
+# container<TAB>source<TAB>line<TAB>expected level (- = unclassified)<TAB>expected fields (k=v;k=v). \e is ESC, \t is a tab.
+addon_core_mosquitto	stdout	[12:00:00] INFO: Starting Mosquitto	info	
+addon_core_mosquitto	stdout	2026-10-04 12:00:00: New connection from 172.30.32.1:50000 on port 1883.	-	
+addon_core_mosquitto	stdout	2026-10-04 12:00:00: Client auto-1 closed its connection.	-	
+addon_core_mosquitto	stdout	2026-10-04 12:00:00: Error: Address already in use	-	
+addon_core_ssh	stdout	[12:00:00] WARNING: Password authentication enabled	warning	
+addon_a0d7b954_vscode	stdout	[2026-10-04T12:00:00] ERROR: Failed	error	
+addon_core_samba	stdout	s6-rc: info: service init-smbd successfully started	info	
+addon_core_samba	stdout	plain text	-	
+addon_core_zwave_js	stdout	[12:00:00] INFO: Starting Z-Wave JS Server	info	
+addon_core_zwave_js	stdout	2026-10-04T12:00:00.000Z CNTRLR   [Node 005] Interview stage completed	-	
+addon_45df7312_zigbee2mqtt	stdout	[12:00:00] INFO: Starting Zigbee2MQTT	info	
+addon_45df7312_zigbee2mqtt	stdout	[2026-10-04 12:00:00] info: \tz2m: Logging to console, file (filename: log.log)	info	logger=z2m
+addon_45df7312_zigbee2mqtt	stdout	[2026-10-04 12:00:01] warning: \tz2m:mqtt: Not connected to MQTT server!	warning	logger=z2m:mqtt
+addon_45df7312_zigbee2mqtt	stdout	[2026-10-04 12:00:02] error: \tz2m: Failed to start	error	logger=z2m
+addon_45df7312_zigbee2mqtt	stdout	[2026-10-04 12:00:03] debug: \tz2m:mqtt: Received message on topic	debug	logger=z2m:mqtt
+addon_45df7312_zigbee2mqtt	stdout	[2026-10-04 12:00:04] info: plain message without logger	info	
+addon_45df7312_zigbee2mqtt	stdout	[2026-10-04 12:00:05] unexpected format	-	
+addon_45df7312_zigbee2mqtt	stdout	    at Object.<anonymous> (index.js:1:1)	-	
+addon_a0d7b954_nodered	stdout	4 Oct 12:00:00 - [info] Server now running at http://127.0.0.1:1880/	info	
+addon_a0d7b954_nodered	stdout	4 Oct 12:00:00 - [warn] [function:Calc] Something odd	warning	logger=function:Calc
+addon_a0d7b954_nodered	stdout	14 Oct 12:00:00 - [error] [mqtt-broker:abc123] Connection failed	error	logger=mqtt-broker:abc123
+addon_a0d7b954_nodered	stdout	4 Oct 12:00:00 - [debug] verbose line	debug	
+addon_a0d7b954_nodered	stdout	4 Oct 12:00:00 - [metric] {"level":99}	-	
+addon_a0d7b954_nodered	stdout	Welcome to Node-RED	-	
+addon_a0d7b954_zwavejs2mqtt	stdout	2026-10-04 12:00:00.123 INFO APP: GET /health/zwave 301	info	logger=APP
+addon_a0d7b954_zwavejs2mqtt	stdout	2026-10-04 12:00:00.123 WARN ZWAVE-SERVER: Client disconnected	warning	logger=ZWAVE-SERVER
+addon_a0d7b954_zwavejs2mqtt	stdout	2026-10-04 12:00:00.123 ERROR MQTT: connect ECONNREFUSED	error	logger=MQTT
+addon_a0d7b954_zwavejs2mqtt	stdout	2026-10-04 12:00:00.123 DEBUG SOCKET: Sending event	debug	logger=SOCKET
+addon_a0d7b954_zwavejs2mqtt	stdout	2026-10-04 12:00:00.123 SILLY APP: details	debug	
+addon_a0d7b954_zwavejs2mqtt	stdout	2026-10-04 12:00:00.123 INFO lowercase: not our logger style	-	
+addon_core_matter_server	stdout	2026-10-04 12:00:00.123 (MainThread) INFO [matter_server.server.server] Starting the Matter Server...	info	logger=matter_server.server.server
+addon_core_matter_server	stdout	2026-10-04 12:00:00.123 (MainThread) WARNING [chip.native.DIS] Resolve timeout	warning	logger=chip.native.DIS
+addon_core_matter_server	stdout	2026-10-04 12:00:00.123 (Dummy-2) ERROR [matter_server.server.device_controller] Failed	error	logger=matter_server.server.device_controller
+addon_core_matter_server	stdout	2026-10-04 12:00:00.123 (MainThread) NOTICE [x] unknown level	-	
+addon_core_matter_server	stdout	[12:00:00] INFO: Starting Matter Server	info	
+addon_5c53de3b_esphome	stdout	INFO Starting log output from 192.168.1.10 using esphome API	info	
+addon_5c53de3b_esphome	stdout	WARNING Can't connect to ESPHome API for esp32: Timeout	warning	
+addon_5c53de3b_esphome	stdout	ERROR Error connecting to [AddrInfo]: Connection refused	error	
+addon_5c53de3b_esphome	stdout	[12:00:00][I][wifi:617]: WiFi Connected!	info	logger=wifi
+addon_5c53de3b_esphome	stdout	[12:00:00][W][component:214]: Component took a long time	warning	logger=component
+addon_5c53de3b_esphome	stdout	[12:00:00][E][api.connection:123]: Error	error	logger=api.connection
+addon_5c53de3b_esphome	stdout	[12:00:00][D][sensor:093]: 'Temp': Sending state 21.5	debug	logger=sensor
+addon_5c53de3b_esphome	stdout	[12:00:00][V][uart:010]: Read byte	debug	logger=uart
+addon_5c53de3b_esphome	stdout	[12:00:00][C][wifi:1]: config dump	info	logger=wifi
+addon_5c53de3b_esphome-beta	stdout	INFO Reading configuration /config/esphome/x.yaml...	info	
+addon_core_whisper	stdout	INFO:__main__:Ready	info	logger=__main__
+addon_core_piper	stdout	INFO:wyoming_piper.__main__:Ready	info	logger=wyoming_piper.__main__
+addon_core_openwakeword	stdout	WARNING:root:No models found	warning	logger=root
+addon_core_whisper	stdout	DEBUG:wyoming_faster_whisper.handler:Transcribing	debug	logger=wyoming_faster_whisper.handler
+addon_core_whisper	stdout	Traceback (most recent call last):	-	
+addon_a0d7b954_grafana	stdout	logger=settings t=2026-10-04T12:00:00.123456789Z level=info msg="Starting Grafana" version=10.0.0	info	
+addon_a0d7b954_grafana	stdout	logger=sqlstore t=2026-10-04T12:00:00.123456789Z level=eror msg="Failed"	error	
+addon_a0d7b954_grafana	stdout	plain grafana line	-	
+addon_a0d7b954_influxdb	stdout	ts=2026-10-04T12:00:00.123456Z lvl=info msg="Listening" log_id=0abc	info	
+addon_a0d7b954_influxdb	stdout	ts=2026-10-04T12:00:00.123456Z lvl=warn msg="Slow query"	warning	
+addon_a0d7b954_unknownaddon	stdout	[12:00:00] INFO: Starting add-on	info	
+addon_a0d7b954_unknownaddon	stdout	free text line	-	
+addon_a0d7b954_unknownaddon	stdout	2026-10-04 12:00:00.123 WARNING (MainThread) [x] ha style not matched for add-ons	-	
+addon_a0d7b954_grafana	stdout	[12:00:00] INFO: Starting Grafana	info	
+addon_a0d7b954_influxdb	stdout	[12:00:00] INFO: Starting InfluxDB	info	
+addon_5c53de3b_esphome	stdout	[12:00:00][VV][uart:010]: Very verbose byte	debug	logger=uart
+addon_core_ssh	stdout	cont-init: info: running /etc/cont-init.d/00-banner.sh	info	
+addon_core_ssh	stdout	services-up: warning: slow start	warning	

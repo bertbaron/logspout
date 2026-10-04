@@ -15,7 +15,18 @@ import (
 
 // Compiled is an immutable, validated rule list. It is safe for concurrent use.
 type Compiled struct {
+	name  string // list name for traces
 	rules []compiledRule
+}
+
+// WithName returns a copy that labels its rule traces with name.
+func (c *Compiled) WithName(name string) *Compiled {
+	if c == nil {
+		return nil
+	}
+	cp := *c
+	cp.name = name
+	return &cp
 }
 
 type compiledRule struct {
@@ -239,7 +250,9 @@ func compileCond(c *Condition) (*compiledCond, error) {
 		}
 	}
 	if c.Expr != "" {
-		prog, err := expr.Compile(c.Expr, expr.Env(exprEnv{}), expr.AsBool())
+		prog, err := expr.Compile(c.Expr, expr.Env(exprEnv{}), expr.AsBool(),
+			// repeat() can allocate gigabytes per message.
+			expr.DisableBuiltin("repeat"))
 		if err != nil {
 			return nil, fmt.Errorf("expr: %w", err)
 		}

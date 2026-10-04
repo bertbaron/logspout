@@ -325,6 +325,7 @@ func TestCompileErrors(t *testing.T) {
 		{"invalid image glob", Rule{Drop: true, When: &Condition{Image: StringList{"[x"}}}, "invalid glob"},
 		{"value is empty", Rule{Drop: true, When: &Condition{Container: StringList{""}}}, "value is empty"},
 		{"invalid regex", Rule{Drop: true, When: &Condition{Match: "("}}, "match"},
+		{"expr repeat disabled", Rule{Drop: true, When: &Condition{Expr: `len(repeat("x", 1000000000)) > 0`}}, "repeat"},
 		{"invalid expr syntax", Rule{Drop: true, When: &Condition{Expr: "level =="}}, "expr"},
 		{"expr not bool", Rule{Drop: true, When: &Condition{Expr: "level"}}, "expr"},
 		{"expr unknown variable", Rule{Drop: true, When: &Condition{Expr: `nope == "x"`}}, "expr"},

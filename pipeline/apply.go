@@ -208,7 +208,7 @@ func (c *Compiled) Apply(m *router.Message, trace *Trace) (dropped bool) {
 			r := &c.rules[i]
 			var rt *RuleTrace
 			if trace != nil {
-				trace.Rules = append(trace.Rules, RuleTrace{Index: r.index, Name: r.name})
+				trace.Rules = append(trace.Rules, RuleTrace{List: c.name, Index: r.index, Name: r.name})
 				rt = &trace.Rules[len(trace.Rules)-1]
 			}
 			var groups []string

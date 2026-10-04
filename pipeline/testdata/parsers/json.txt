@@ -21,3 +21,6 @@ not json {"level":"warn"}	-
 {"level":"info"} trailing	-	
  {"level":"info"}	-	
 \e[90m{"level":"info","msg":"colored"}\e[0m	info	
+{"level":"custom","severity":"error"}	error	
+{"level":42,"severity":"warn"}	warning	
+{"level":"custom","severity":"bogus"}	-	

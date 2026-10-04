@@ -1,0 +1,159 @@
+# Default rule set v1. Frozen once released: changes go into the next version.
+# Rules only classify (level and fields). They never drop or rewrite messages.
+# NOT FROZEN yet: v1 is only frozen once its fixtures are checked against lines
+# captured from a live Home Assistant install.
+# Left out on purpose: the official addon_core_zwave_js driver lines and the
+# Mosquitto lines have no level in their format. Only their bashio lines are
+# classified (by addon-bashio).
+# Each rule is gated with a `match` on its own line format, so that it does not
+# fire on lines of another format. `stop` is only used with such a gate.
+rules:
+  # Home Assistant core and Supervisor: 2026-10-04 12:00:00.123 WARNING (MainThread) [logger] text
+  - name: ha-core-log
+    when:
+      container: [homeassistant, hassio_supervisor]
+      match: '^\d{2,4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
+    parse: homeassistant
+    stop: true
+
+  # CoreDNS in hassio_dns: [INFO] 127.0.0.1:1234 - ...
+  - name: hassio-dns-coredns
+    when:
+      container: hassio_dns
+      match: '^\[[A-Za-z]+\]'
+    parse: bracket
+    stop: true
+
+  # PulseAudio in hassio_audio: E: [pulseaudio] module.c: text
+  - name: hassio-audio-pulse-error
+    when: {container: hassio_audio, match: '^E: \['}
+    set: {level: error}
+    stop: true
+  - name: hassio-audio-pulse-warning
+    when: {container: hassio_audio, match: '^W: \['}
+    set: {level: warning}
+    stop: true
+  - name: hassio-audio-pulse-info
+    when: {container: hassio_audio, match: '^I: \['}
+    set: {level: info}
+    stop: true
+  - name: hassio-audio-pulse-debug
+    when: {container: hassio_audio, match: '^D: \['}
+    set: {level: debug}
+    stop: true
+
+  # s6-overlay messages: s6-rc: info: service legacy-services successfully started
+  # (v3 also has cont-init: info: ... and services-up: info: ...)
+  - name: s6-overlay
+    when:
+      container: [homeassistant, 'hassio_*', 'addon_*']
+      match: '^(?:s6-[a-z-]+|cont-init|cont-finish|fix-attrs|services-up|services-down): (?P<lvl>info|warning|error|fatal):'
+    set: {level: '${lvl}'}
+    stop: true
+
+  # bashio lines of the other core containers: [12:00:00] INFO: text
+  - name: hassio-core-bashio
+    when:
+      container: [hassio_dns, hassio_multicast, hassio_observer, hassio_cli, hassio_audio]
+    parse: bashio
+
+  # Zigbee2MQTT: [2026-10-04 12:00:00] info: \tz2m:mqtt: text
+  - name: zigbee2mqtt-logger
+    when:
+      container: 'addon_*_zigbee2mqtt'
+      match: '^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] (?P<lvl>error|warning|info|debug):\s+(?P<logger>z2m[\w.:-]*): '
+    set: {level: '${lvl}', fields.logger: '${logger}'}
+    stop: true
+  - name: zigbee2mqtt-level
+    when:
+      container: 'addon_*_zigbee2mqtt'
+      match: '^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] (?P<lvl>error|warning|info|debug):'
+    set: {level: '${lvl}'}
+    stop: true
+
+  # Node-RED: 4 Oct 12:00:00 - [warn] [function:Name] text
+  - name: nodered-logger
+    when:
+      container: 'addon_*_nodered'
+      match: '^\d{1,2} [A-Z][a-z]{2} \d{2}:\d{2}:\d{2} - \[(?P<lvl>fatal|error|warn|info|debug|trace)\] \[(?P<logger>[^\]]+)\]'
+    set: {level: '${lvl}', fields.logger: '${logger}'}
+    stop: true
+  - name: nodered-level
+    when:
+      container: 'addon_*_nodered'
+      match: '^\d{1,2} [A-Z][a-z]{2} \d{2}:\d{2}:\d{2} - \[(?P<lvl>fatal|error|warn|info|debug|trace)\]'
+    set: {level: '${lvl}'}
+    stop: true
+
+  # Z-Wave JS UI: 2026-10-04 12:00:00.123 INFO APP: text
+  - name: zwave-js-ui-silly
+    when:
+      container: ['addon_*_zwavejs2mqtt', 'addon_*_zwave_js_ui']
+      match: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ SILLY '
+    set: {level: debug}
+    stop: true
+  - name: zwave-js-ui
+    when:
+      container: ['addon_*_zwavejs2mqtt', 'addon_*_zwave_js_ui']
+      match: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ (?P<lvl>ERROR|WARN|INFO|DEBUG|VERBOSE) (?P<logger>[A-Z0-9_-]+):'
+    set: {level: '${lvl}', fields.logger: '${logger}'}
+    stop: true
+
+  # Matter Server: 2026-10-04 12:00:00.123 (MainThread) INFO [matter_server.server.server] text
+  - name: matter-server
+    when:
+      container: 'addon_*_matter_server'
+      match: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)? \([^)]*\) (?P<lvl>CRITICAL|ERROR|WARNING|INFO|DEBUG) \[(?P<logger>[^\]]+)\]'
+    set: {level: '${lvl}', fields.logger: '${logger}'}
+    stop: true
+
+  # ESPHome dashboard: INFO Starting log output from 192.168.1.10 using esphome API
+  - name: esphome-dashboard
+    when:
+      container: 'addon_*_esphome*'
+      match: '^(?P<lvl>CRITICAL|ERROR|WARNING|INFO|DEBUG) '
+    set: {level: '${lvl}'}
+    stop: true
+  # ESPHome device logs: [12:00:00][I][wifi:123]: text
+  - name: esphome-device-error
+    when: {container: 'addon_*_esphome*', match: '^\[\d{2}:\d{2}:\d{2}\]\[E\]\[(?P<logger>[^:\]]+)'}
+    set: {level: error, fields.logger: '${logger}'}
+    stop: true
+  - name: esphome-device-warning
+    when: {container: 'addon_*_esphome*', match: '^\[\d{2}:\d{2}:\d{2}\]\[W\]\[(?P<logger>[^:\]]+)'}
+    set: {level: warning, fields.logger: '${logger}'}
+    stop: true
+  - name: esphome-device-info
+    when: {container: 'addon_*_esphome*', match: '^\[\d{2}:\d{2}:\d{2}\]\[[IC]\]\[(?P<logger>[^:\]]+)'}
+    set: {level: info, fields.logger: '${logger}'}
+    stop: true
+  - name: esphome-device-debug
+    when: {container: 'addon_*_esphome*', match: '^\[\d{2}:\d{2}:\d{2}\]\[(?:D|V|VV)\]\[(?P<logger>[^:\]]+)'}
+    set: {level: debug, fields.logger: '${logger}'}
+    stop: true
+
+  # Wyoming add-ons (Whisper, Piper, openWakeWord): INFO:wyoming_piper.__main__:Ready
+  - name: wyoming-python-logging
+    when:
+      container: ['addon_*_whisper', 'addon_*_piper', 'addon_*_openwakeword']
+      match: '^(?P<lvl>CRITICAL|ERROR|WARNING|INFO|DEBUG):(?P<logger>[\w.]+):'
+    set: {level: '${lvl}', fields.logger: '${logger}'}
+    stop: true
+
+  # Grafana and InfluxDB use logfmt: logger=settings t=... level=info msg="text"
+  - name: grafana-logfmt
+    when: {container: 'addon_*_grafana', match: '(^|\s)(level|lvl)='}
+    parse: logfmt
+    stop: true
+  - name: influxdb-logfmt
+    when: {container: 'addon_*_influxdb', match: '(^|\s)(level|lvl)='}
+    parse: logfmt
+    stop: true
+
+  # Catch-all for add-ons that log with bashio at start-up. Last, so that the
+  # specific rules above win. Mosquitto has no level in its own lines and
+  # stays unclassified apart from bashio lines.
+  - name: addon-bashio
+    when:
+      container: 'addon_*'
+    parse: bashio
