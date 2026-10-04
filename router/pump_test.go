@@ -227,8 +227,8 @@ func TestPumpContainerPump(t *testing.T) {
 	pump := newContainerPump(container, os.Stdout, os.Stderr)
 	logstream, route := make(chan *Message), &Route{}
 	go func() {
-		for msg := range logstream {
-			t.Logf("message: %+v", msg)
+		// no t.Logf: the goroutine can outlive the test
+		for range logstream {
 		}
 	}()
 	pump.add(logstream, route)

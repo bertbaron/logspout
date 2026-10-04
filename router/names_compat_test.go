@@ -9,10 +9,12 @@ import (
 
 func TestNamesNoFragmentKeepsOldRouteFields(t *testing.T) {
 	var seen []*Route
+	AdapterFactories.Unregister("capta") // a previous run (-count) must not leave its closure behind
 	AdapterFactories.Register(func(r *Route) (LogAdapter, error) {
 		seen = append(seen, r)
 		return &DummyAdapter{}, nil
 	}, "capta")
+	t.Cleanup(func() { AdapterFactories.Unregister("capta") })
 	rm := &RouteManager{routes: make(map[string]*Route)}
 	for _, u := range []string{"capta+tcp://h:514?filter.name=web&structured_data=x", "capta://h2:514/p"} {
 		if err := rm.AddFromURI(u); err != nil {
@@ -37,10 +39,12 @@ func TestNamesNoFragmentKeepsOldRouteFields(t *testing.T) {
 
 func TestNamesFragmentInvisibleToAdapter(t *testing.T) {
 	var got *Route
+	AdapterFactories.Unregister("captb") // a previous run (-count) must not leave its closure behind
 	AdapterFactories.Register(func(r *Route) (LogAdapter, error) {
 		got = r
 		return &DummyAdapter{}, nil
 	}, "captb")
+	t.Cleanup(func() { AdapterFactories.Unregister("captb") })
 	rm := &RouteManager{routes: make(map[string]*Route)}
 	if err := rm.AddFromURI("captb+tcp://h:514/p?a=b#backup"); err != nil {
 		t.Fatal(err)

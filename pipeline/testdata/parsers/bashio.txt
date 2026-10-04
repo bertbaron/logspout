@@ -1,0 +1,26 @@
+# input<TAB>expected level (or -)<TAB>expected fields (k=v;k=v). ESC is written as \e.
+[12:00:00] INFO: Starting service	info	
+[12:00:00] WARNING: Something odd	warning	
+[12:00:00] ERROR: Failed	error	
+[12:00:00] FATAL: Dead	critical	
+[12:00:00] NOTICE: Fyi	notice	
+[12:00:00] DEBUG: Details	debug	
+[12:00:00] TRACE: More details	debug	
+[2026-10-04 12:00:00] INFO: with date	info	
+\e[34m[12:00:00] INFO: colored\e[0m	info	
+\e[1;31m[12:00:00] ERROR: colored\e[0m	error	
+[12:00:00] just text	-	
+INFO: no timestamp	-	
+[10:15:42] INFO: Configuring Mosquitto	info	
+[10:15:42] WARNING: Using a default password	warning	
+[10:15:43] ERROR: Could not connect to the Supervisor	error	
+\e[32m[10:15:43] INFO: \e[0mservice started	info	
+[2026-10-04T10:15:43.123] INFO: iso with T	info	
+[10:15:43.123] INFO: millis	info	
+[10:15:43] INFO message without space after colon is fine?:	-	
+[10:15:43] INFO : space before colon	-	
+[10:15:43] BOGUS: unknown	-	
+[10:15:43]INFO: no space	-	
+ [10:15:43] INFO: leading space	-	
+[10:15:43] The ERROR: later in the line	-	
+[1:15:43] INFO: single digit hour	-	

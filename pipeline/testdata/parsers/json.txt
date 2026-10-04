@@ -1,0 +1,23 @@
+# input<TAB>expected level (or -)<TAB>expected fields (k=v;k=v). ESC is written as \e.
+{"level":"warn","msg":"disk"}	warning	
+{"severity":"ERROR","message":"x"}	error	
+{"level":"info","logger":"app.main","msg":"x"}	info	logger=app.main
+{"level":30,"msg":"numeric"}	-	
+{"msg":"no level"}	-	
+{"level":"warn"	-	
+[{"level":"warn"}]	-	
+not json {"level":"warn"}	-	
+{"level":"info","time":"2026-10-04T10:15:43.123Z","msg":"Zigbee2MQTT started"}	info	
+{"level":"error","message":"Failed to connect","logger":"z2m:mqtt"}	error	logger=z2m:mqtt
+{"severity":"WARNING","message":"x","logger":"zwave"}	warning	logger=zwave
+{"level":"INFO","message":"x","logger":""}	info	
+{"level":"warn","logger":42}	warning	
+{"level":null,"severity":"error"}	error	
+{"level":"","msg":"x"}	-	
+{"level":"verbose","message":"Z-Wave JS driver"}	debug	
+{"level":"info","msg":"unicode é 中"}	info	
+{"level":{"x":1}}	-	
+{}	-	
+{"level":"info"} trailing	-	
+ {"level":"info"}	-	
+\e[90m{"level":"info","msg":"colored"}\e[0m	info	

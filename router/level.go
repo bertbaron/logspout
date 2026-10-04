@@ -22,12 +22,17 @@ var levelRanks = map[string]int{
 }
 
 var levelAliases = map[string]string{
-	"warn":    LevelWarning,
-	"err":     LevelError,
-	"fatal":   LevelCritical,
-	"crit":    LevelCritical,
-	"trace":   LevelDebug,
-	"verbose": LevelDebug,
+	"warn":        LevelWarning,
+	"eror":        LevelError,
+	"err":         LevelError,
+	"fatal":       LevelCritical,
+	"crit":        LevelCritical,
+	"emerg":       LevelCritical,
+	"emergency":   LevelCritical,
+	"alert":       LevelCritical,
+	"information": LevelInfo,
+	"trace":       LevelDebug,
+	"verbose":     LevelDebug,
 }
 
 // NormalizeLevel maps a level name or alias, case-insensitively, to one of the

@@ -1,0 +1,24 @@
+# input<TAB>expected level (or -)<TAB>expected fields (k=v;k=v). ESC is written as \e.
+time=2026-10-04T12:00:00Z level=warn msg="disk almost full"	warning	
+level=info msg=started	info	
+ts=1 lvl=error msg=x	error	
+level="debug" msg="quoted"	debug	
+time=2026-10-04T12:00:00Z level=INFO msg=up	info	
+\e[2mtime=1\e[0m level=fatal msg=x	critical	
+time=1 msg=nolevel	-	
+level=bogus msg=x	-	
+plain text level=info	-	
+ts=2026-10-04T10:15:43.123456Z caller=main.go:123 level=info msg="Loki started"	info	
+level=warn ts=2026-10-04T10:15:43Z caller=grpc_logging.go:43 method=/logproto.Pusher/Push duration=1s msg="gRPC\nline"	warning	
+logger=settings t=2026-10-04T10:15:43.123+0200 lvl=info msg="Starting Grafana" version=10.2.0	info	
+logger=context userId=0 orgId=1 uname= t=2026-10-04T10:15:43+0200 lvl=eror msg="Request Completed" status=500	error	
+logger=ngalert t=2026-10-04T10:15:43+0200 lvl=error msg="failed"	error	
+logger=live t=1 level=critical msg=x	critical	
+time="2026-10-04T10:15:43Z" level=warning msg="Found 3 items"	warning	
+time="2026-10-04T10:15:43Z" level=trace msg=x	debug	
+level= msg=empty	-	
+msg="level=error inside quotes only"	-	
+msg=hello mylevel=error	-	
+sublevel=error msg=x	-	
+ level=info msg=leading space	-	
+=level msg=x	-	

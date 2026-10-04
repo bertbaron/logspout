@@ -1,0 +1,23 @@
+# input<TAB>expected level (or -)<TAB>expected fields (k=v;k=v). ESC is written as \e.
+[warn] something happened	warning	
+[ERROR] boom	error	
+[Info] hello	info	
+[debug] x	debug	
+[critical] x	critical	
+\e[31m[error] colored\e[0m	error	
+[12:00:00] INFO: x	-	
+[unknown] x	-	
+text [warn] later	-	
+[notice] some notice	notice	
+[emerg] 1#1: bind() failed	critical	
+[alert] 1#1: alert	critical	
+2026/10/04 10:15:43 [error] 29#29: *1 open() failed	-	
+2026/10/04 10:15:43 [warn] 29#29: *1 buffer	-	
+[WARNING] mosquitto-ish	warning	
+[Information] verbose name	info	
+[error]no space after	error	
+[ error ] spaces inside	-	
+[] empty	-	
+[e] too short	-	
+[error2] with digit	-	
+[10] numeric	-	

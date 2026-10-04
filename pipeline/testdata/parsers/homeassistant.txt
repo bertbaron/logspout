@@ -1,0 +1,26 @@
+# input<TAB>expected level (or -)<TAB>expected fields (k=v;k=v). ESC is written as \e.
+2026-10-04 12:00:00.123 INFO (MainThread) [homeassistant.core] Starting Home Assistant	info	logger=homeassistant.core;thread=MainThread
+2026-10-04 12:00:01.500 WARNING (SyncWorker_3) [homeassistant.components.sensor] Sensor unavailable	warning	logger=homeassistant.components.sensor;thread=SyncWorker_3
+2026-10-04 12:00:02.000 ERROR (MainThread) [homeassistant.config_entries] Error setting up entry	error	logger=homeassistant.config_entries;thread=MainThread
+2026-10-04 12:00:02.000 DEBUG (MainThread) [asyncio] Using selector: EpollSelector	debug	logger=asyncio;thread=MainThread
+2026-10-04 12:00:02.000 CRITICAL (MainThread) [homeassistant.core] boom	critical	logger=homeassistant.core;thread=MainThread
+26-10-04 12:00:03 INFO (MainThread) [supervisor.api] Starting API	info	logger=supervisor.api;thread=MainThread
+\e[32m2026-10-04 12:00:00.123 INFO (MainThread) [homeassistant.core] colored\e[0m	info	logger=homeassistant.core;thread=MainThread
+\e[33m2026-10-04 12:00:00.123 WARNING (MainThread) [homeassistant.core] colored\e[0m	warning	logger=homeassistant.core;thread=MainThread
+2026-10-04 12:00:00.123 BOGUS (MainThread) [x] unknown level	-	
+  File "/usr/src/homeassistant/x.py", line 3, in run	-	
+[12:00:00] INFO: not ha	-	
+2026-10-04 12:00:00.123 WARNING (MainThread) [homeassistant.components.hue.bridge] Unable to reach bridge 192.168.1.2	warning	logger=homeassistant.components.hue.bridge;thread=MainThread
+2026-10-04 12:00:00.123 ERROR (MainThread) [homeassistant.components.mqtt.client] Connection lost	error	logger=homeassistant.components.mqtt.client;thread=MainThread
+2026-10-04 12:00:00.123 INFO (ImportExecutor_0) [homeassistant.loader] Loaded hue from homeassistant.components.hue	info	logger=homeassistant.loader;thread=ImportExecutor_0
+2026-10-04 12:00:00.123 INFO (MainThread) Starting without logger	info	thread=MainThread
+2026-10-04 12:00:00.123 INFO Starting without thread	info	
+26-10-04 12:00:05 WARNING (MainThread) [supervisor.addons.addon] Add-on core_mosquitto is stopped	warning	logger=supervisor.addons.addon;thread=MainThread
+26-10-04 12:00:05 ERROR (MainThread) [supervisor.misc.tasks] Watchdog found a problem	error	logger=supervisor.misc.tasks;thread=MainThread
+2026-10-04 12:00:00,123 INFO (MainThread) [x] comma millis	info	logger=x;thread=MainThread
+Traceback (most recent call last):	-	
+    raise ValueError("2026-10-04 12:00:00 ERROR (x) [y] nested")	-	
+  2026-10-04 12:00:00 ERROR (MainThread) [x] leading space	-	
+2026-10-04 12:00:00	-	
+2026-10-04 12:00:00 error	error	
+ValueError: invalid literal	-	

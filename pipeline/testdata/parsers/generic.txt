@@ -1,0 +1,27 @@
+# input<TAB>expected level (or -)<TAB>expected fields (k=v;k=v). ESC is written as \e.
+WARN something happened	warning	
+ERROR: failed to connect	error	
+info starting	info	
+2026/10/04 12:00:00 debug: details	debug	
+some prefix FATAL crash	critical	
+\e[33mWARNING\e[0m disk	warning	
+this line is quite a bit longer than forty and then INFO comes late	-	
+information is not a keyword	-	
+terror is fine	-	
+nothing here	-	
+1696414543: Error: Unable to open config file.	error	
+2026-10-04 10:15:43 [WARN] low battery	warning	
+level: info	info	
+E1004 10:15:43.123 error: foo	error	
+no_error_here at all	-	
+errors happened	-	
+debugging session started	-	
+informational note	-	
+warnings: 3	-	
+Verbose output enabled	-	
+1234567890123456789012345678901234567890 error	-	
+1234567890123456789012345678901234 error	error	
+ééééééééééééééé ERROR late multibyte	error	
+Connection to host failed (error code 5)	error	
+GET /api/states 200	-	
+1234567890123456789012345678901234 informational	-	

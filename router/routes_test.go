@@ -34,6 +34,10 @@ func TestRouterNoDuplicateIds(t *testing.T) {
 
 	// Mock "running" so routes actually start running when added.
 	Routes.routing = true
+	t.Cleanup(func() {
+		Routes.Remove("abc")
+		Routes.routing = false
+	})
 
 	// Start the first route.
 	route1 := &Route{
