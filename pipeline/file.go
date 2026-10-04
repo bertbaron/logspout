@@ -63,8 +63,8 @@ func (f *FileConfig) Apply(base Options) Options {
 
 // FileEnv is what a rule file is validated against.
 type FileEnv struct {
-	// Routes are the route names. Ambiguous lists default names that more
-	// than one route has; rules cannot target them.
+	// Routes are the route names. Ambiguous lists names that more than
+	// one route has; rules cannot target them.
 	Routes    []string
 	Ambiguous []string
 	// DefaultRules is the add-on option, used when the file has no `defaults`.

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gliderlabs/logspout/cfg"
@@ -31,6 +32,10 @@ type RouteManager struct {
 	routes    map[string]*Route
 	routing   bool
 	wg        sync.WaitGroup
+	// ambiguous is the set of names that more than one route has. The pumps
+	// read it for every message, so it is kept up to date by Add and Remove.
+	ambiguous atomic.Pointer[map[string]bool]
+	warned    sync.Map
 }
 
 // Load loads all route from a RouteStore
@@ -41,11 +46,6 @@ func (rm *RouteManager) Load(persistor RouteStore) error {
 	}
 	for _, route := range routes {
 		if err = rm.Add(route); err != nil {
-			var clash *nameClashError
-			if errors.As(err, &clash) {
-				log.Printf("ERROR: skipping stored route %s (%s %s): %v", route.ID, route.Adapter, route.Address, err)
-				continue
-			}
 			return err
 		}
 	}
@@ -84,6 +84,7 @@ func (rm *RouteManager) Remove(id string) bool {
 		route.closer <- struct{}{}
 	}
 	delete(rm.routes, id)
+	rm.updateAmbiguous()
 	if rm.persistor != nil {
 		rm.persistor.Remove(id)
 	}
@@ -97,9 +98,9 @@ func (rm *RouteManager) AddFromURI(uri string) error {
 	if err != nil {
 		return err
 	}
-	name, explicit, err := nameFromURL(u)
-	if err != nil {
-		return err
+	name, explicit, invalid := effectiveName(u)
+	if invalid != nil {
+		log.Printf("warning: route %s: %v; the #fragment is ignored", u.Redacted(), invalid)
 	}
 	r := &Route{
 		Name:         name,
@@ -146,18 +147,17 @@ func (rm *RouteManager) Add(route *Route) error {
 	if name == "" {
 		name, explicit = route.AdapterType(), false
 	} else if !ValidRouteName(name) {
-		return fmt.Errorf("invalid route name %q", name)
+		log.Printf("warning: route %s (%s %s) has an invalid name %q; the name is ignored and the default name is used", route.ID, route.Adapter, route.Address, name)
+		name, explicit = route.AdapterType(), false
 	} else if name != route.AdapterType() {
 		// API clients send a name without name_explicit.
 		explicit = true
-	}
-	if err := rm.checkName(route.ID, name, explicit); err != nil {
-		return err
 	}
 	adapter, err := factory(route)
 	if err != nil {
 		return err
 	}
+	rm.warnClash(route.ID, name)
 	route.Name, route.NameExplicit = name, explicit
 	if route.ID == "" {
 		h := sha1.New() //nolint:gosec
@@ -172,6 +172,7 @@ func (rm *RouteManager) Add(route *Route) error {
 	}
 
 	rm.routes[route.ID] = route
+	rm.updateAmbiguous()
 	if rm.persistor != nil {
 		if err := rm.persistor.Add(route); err != nil {
 			log.Println("persistor:", err)
@@ -183,43 +184,57 @@ func (rm *RouteManager) Add(route *Route) error {
 	return nil
 }
 
-type nameClashError struct{ name string }
-
-func (e *nameClashError) Error() string {
-	return fmt.Sprintf("route name %q is used more than once, add a unique #name to the route URI", e.name)
+// warnClash logs when other routes already have the same name. The route is
+// still added: the name becomes ambiguous and a rule file cannot target it.
+// The caller must hold the lock.
+func (rm *RouteManager) warnClash(routeID, name string) {
+	for id, other := range rm.routes {
+		if other.Name == name && id != routeID {
+			log.Printf("warning: more than one route has the name %q; add a unique #name to the route URI so rules can target it", name)
+			return
+		}
+	}
 }
 
-// checkName rejects duplicates involving an explicit name. Two default names
-// only warn, to keep existing setups with several routes of one type working.
-// The caller must hold the lock.
-func (rm *RouteManager) checkName(routeID, name string, explicit bool) error {
-	clash := false
-	for id, other := range rm.routes {
-		if other.Name != name || id == routeID {
-			continue
+// updateAmbiguous recomputes the ambiguous names. The caller must hold the lock.
+func (rm *RouteManager) updateAmbiguous() {
+	count := map[string]int{}
+	set := map[string]bool{}
+	for _, r := range rm.routes {
+		if count[r.Name]++; count[r.Name] == 2 {
+			set[r.Name] = true
 		}
-		if explicit || other.NameExplicit {
-			return &nameClashError{name: name}
+	}
+	rm.ambiguous.Store(&set)
+	rm.warned.Range(func(k, _ any) bool {
+		if !set[k.(string)] {
+			rm.warned.Delete(k)
 		}
-		clash = true
-	}
-	if clash {
-		log.Printf("warning: more than one route has the default name %q; add #name to the route URI so rules can target it", name)
-	}
-	return nil
+		return true
+	})
 }
 
 // AmbiguousName reports whether more than one route has the given name.
 func (rm *RouteManager) AmbiguousName(name string) bool {
-	rm.Lock()
-	defer rm.Unlock()
-	n := 0
-	for _, r := range rm.routes {
-		if r.Name == name {
-			n++
+	set := rm.ambiguous.Load()
+	return set != nil && (*set)[name]
+}
+
+// targetMessage applies the target rules of the route. Target rules are
+// validated against the configured routes only, so a rule for a name that
+// more than one route has (for example an API route that reuses a name) must
+// not apply to any of them: the message goes out unchanged by target rules.
+func (rm *RouteManager) targetMessage(proc Processor, route *Route, msg *Message) (*Message, bool) {
+	if !rm.AmbiguousName(route.Name) {
+		return proc.Target(route.Name, msg)
+	}
+	// Target does not change msg (copy on write); a different result means rules exist for this name.
+	if out, dropped := proc.Target(route.Name, msg); dropped || out != msg {
+		if _, seen := rm.warned.LoadOrStore(route.Name, true); !seen {
+			log.Printf("warning: more than one route has the name %q, so the target rules for this name are not applied", route.Name)
 		}
 	}
-	return n > 1
+	return msg, false
 }
 
 func (rm *RouteManager) route(route *Route) {

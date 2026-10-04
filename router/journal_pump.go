@@ -195,7 +195,7 @@ func (p *JournalPump) dispatch(msg *Message) {
 		out := msg
 		if proc != nil {
 			var dropped bool
-			if out, dropped = proc.Target(route.Name, msg); dropped {
+			if out, dropped = Routes.targetMessage(proc, route, msg); dropped {
 				continue
 			}
 		}

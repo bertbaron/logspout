@@ -35,28 +35,27 @@ func TestRouteName(t *testing.T) {
 	}
 }
 
-func TestValidateRouteNames(t *testing.T) {
+func TestAmbiguousRouteNames(t *testing.T) {
 	tests := []struct {
 		name          string
 		uris          []string
-		wantErr       string
+		wantErr       bool
 		wantAmbiguous []string
 	}{
-		{"unique defaults", []string{"gelf://a:1", "syslog://b:2"}, "", nil},
-		{"duplicate default is allowed", []string{"syslog://a:1", "syslog+tcp://b:2"}, "", []string{"syslog"}},
-		{"duplicate explicit", []string{"syslog://a:1#x", "gelf://b:2#x"}, "add a unique #name", nil},
-		{"explicit clashes with default", []string{"syslog://a:1", "gelf://b:2#syslog"}, "add a unique #name", nil},
-		{"invalid name", []string{"syslog://a:1#a b"}, "invalid route name", nil},
-		{"same type different names", []string{"syslog://a:1#a", "syslog://b:2#b"}, "", nil},
+		{"unique defaults", []string{"gelf://a:1", "syslog://b:2"}, false, nil},
+		{"duplicate default", []string{"syslog://a:1", "syslog+tcp://b:2"}, false, []string{"syslog"}},
+		{"duplicate explicit", []string{"syslog://a:1#x", "gelf://b:2#x"}, false, []string{"x"}},
+		{"explicit clashes with default", []string{"syslog://a:1", "gelf://b:2#syslog"}, false, []string{"syslog"}},
+		{"invalid name counts as default", []string{"syslog://a:1#a b", "syslog://b:1"}, false, []string{"syslog"}},
+		{"invalid name alone", []string{"syslog://a:1#a/b"}, false, nil},
+		{"same type different names", []string{"syslog://a:1#a", "syslog://b:2#b"}, false, nil},
+		{"unparsable", []string{"syslog://a:1/%zz"}, true, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			amb, err := ValidateRouteNames(tt.uris)
-			if tt.wantErr == "" && err != nil {
-				t.Fatal(err)
-			}
-			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
-				t.Fatalf("err = %v, want %q", err, tt.wantErr)
+			amb, err := AmbiguousRouteNames(tt.uris)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v", err)
 			}
 			if strings.Join(amb, ",") != strings.Join(tt.wantAmbiguous, ",") {
 				t.Errorf("ambiguous = %v, want %v", amb, tt.wantAmbiguous)
@@ -78,7 +77,7 @@ func TestAddFromURINames(t *testing.T) {
 		{"syslog+tcp://h:514", "syslog", false, "h:514", "syslog+tcp", false, 0},
 		{"syslog+tcp://h:514#backup", "backup", true, "h:514", "syslog+tcp", false, 0},
 		{"gelf://h:1?foo=bar#g", "g", true, "h:1", "gelf", false, 1},
-		{"gelf://h:1#bad%20name", "", false, "", "", true, 0},
+		{"gelf://h:1#bad%20name", "gelf", false, "h:1", "gelf", false, 0},
 	}
 	for _, tt := range tests {
 		rm := newNameTestManager()
@@ -106,8 +105,8 @@ func TestAddDuplicateNames(t *testing.T) {
 		ambig   bool
 	}{
 		{"two default same type", []string{"syslog://a:1", "syslog://b:2"}, false, true},
-		{"two explicit same", []string{"syslog://a:1#x", "gelf://b:2#x"}, true, false},
-		{"explicit vs default", []string{"syslog://a:1", "gelf://b:2#syslog"}, true, false},
+		{"two explicit same", []string{"syslog://a:1#x", "gelf://b:2#x"}, false, false},
+		{"explicit vs default", []string{"syslog://a:1", "gelf://b:2#syslog"}, false, true},
 		{"distinct explicit", []string{"syslog://a:1#a", "syslog://b:2#b"}, false, false},
 	}
 	for _, tt := range tests {
@@ -146,8 +145,11 @@ func TestAddAPINameWithoutExplicitFlag(t *testing.T) {
 		if err := rm.Add(&Route{Adapter: "syslog", Address: "a:1", Name: "x"}); err != nil {
 			t.Fatal(err)
 		}
-		if err := rm.Add(&Route{Adapter: "syslog", Address: "b:1", Name: "x"}); err == nil {
-			t.Error("second route with same name accepted")
+		if err := rm.Add(&Route{Adapter: "syslog", Address: "b:1", Name: "x"}); err != nil {
+			t.Fatal(err)
+		}
+		if !rm.AmbiguousName("x") {
+			t.Error("name used twice is not ambiguous")
 		}
 	})
 	t.Run("API name equals other default", func(t *testing.T) {
@@ -155,8 +157,11 @@ func TestAddAPINameWithoutExplicitFlag(t *testing.T) {
 		if err := rm.AddFromURI("gelf://g:1"); err != nil {
 			t.Fatal(err)
 		}
-		if err := rm.Add(&Route{Adapter: "syslog", Address: "a:1", Name: "gelf"}); err == nil {
-			t.Error("name clashing with default of other route accepted")
+		if err := rm.Add(&Route{Adapter: "syslog", Address: "a:1", Name: "gelf"}); err != nil {
+			t.Fatal(err)
+		}
+		if !rm.AmbiguousName("gelf") {
+			t.Error("clashing name is not ambiguous")
 		}
 	})
 	t.Run("stored name equal to adapter type stays default", func(t *testing.T) {
@@ -167,17 +172,11 @@ func TestAddAPINameWithoutExplicitFlag(t *testing.T) {
 			}
 		}
 	})
-	t.Run("failed Add does not mutate route", func(t *testing.T) {
+	t.Run("invalid API name is ignored with the default name", func(t *testing.T) {
 		rm := newNameTestManager()
-		rm.AddFromURI("gelf://g:1#x")
-		r := &Route{Adapter: "syslog", Address: "a:1", Name: "x"}
-		if rm.Add(r) == nil || r.NameExplicit {
-			t.Error("unexpected result")
-		}
-		r2 := &Route{Adapter: "syslog", Address: "a:1"}
-		rm.Add(r2)
-		if r2.Name != "syslog" {
-			t.Errorf("name = %q", r2.Name)
+		r := &Route{Adapter: "syslog", Address: "a:1", Name: "a b"}
+		if err := rm.Add(r); err != nil || r.Name != "syslog" || r.NameExplicit {
+			t.Errorf("err = %v, route = %+v", err, r)
 		}
 	})
 }

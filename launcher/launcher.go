@@ -188,15 +188,15 @@ func fileEnv(config Config, defaultRules string) pipeline.FileEnv {
 	env := pipeline.FileEnv{DefaultRules: defaultRules}
 	seen := map[string]bool{}
 	for _, uri := range config.Routes {
-		name, _, err := router.RouteNameWithEnv(uri, config.lookupEnv)
+		name, err := router.EffectiveRouteNameWithEnv(uri, config.lookupEnv)
 		if err != nil || seen[name] {
 			continue
 		}
 		seen[name] = true
 		env.Routes = append(env.Routes, name)
 	}
-	// Validate already passed in LoadConfig, so this cannot fail.
-	env.Ambiguous, _ = router.ValidateRouteNamesWithEnv(config.Routes, config.lookupEnv)
+	// Validate already parsed the URIs in LoadConfig, so this cannot fail.
+	env.Ambiguous, _ = router.AmbiguousRouteNamesWithEnv(config.Routes, config.lookupEnv)
 	return env
 }
 
@@ -272,11 +272,6 @@ func LoadConfig(path string) (Config, error) {
 	if err := config.Validate(); err != nil {
 		return Config{}, err
 	}
-	// Validate already passed, so this cannot fail.
-	ambiguous, _ := router.ValidateRouteNamesWithEnv(config.Routes, config.lookupEnv)
-	for _, name := range ambiguous {
-		log.Printf("warning: more than one route has the default name %q; add #name to the route URI so rules can target it", name)
-	}
 	return config, nil
 }
 
@@ -288,7 +283,8 @@ func (c Config) Validate() error {
 			return fmt.Errorf("routes[%d] must not be empty", i)
 		}
 	}
-	if _, err := router.ValidateRouteNamesWithEnv(c.Routes, c.lookupEnv); err != nil {
+	// Only for URIs that cannot be parsed: a route name never stops start-up.
+	if _, err := router.AmbiguousRouteNamesWithEnv(c.Routes, c.lookupEnv); err != nil {
 		return err
 	}
 	for i, entry := range c.Env {

@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -195,13 +196,15 @@ func TestConfigValidateRouteNames(t *testing.T) {
 	}{
 		{"no fragment", []string{"syslog://a:1", "gelf://b:2"}, false},
 		{"duplicate default allowed", []string{"syslog://a:1", "syslog://b:2"}, false},
-		{"duplicate explicit", []string{"syslog://a:1#x", "gelf://b:2#x"}, true},
-		{"invalid name", []string{"syslog://a:1#a b"}, true},
+		{"duplicate explicit", []string{"syslog://a:1#x", "gelf://b:2#x"}, false},
+		{"explicit equals other default", []string{"syslog://a:1", "gelf://b:2#syslog"}, false},
+		{"invalid name", []string{"syslog://a:1#a b"}, false},
+		{"unparsable uri", []string{"syslog://a:1/%zz"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := Config{Routes: tt.routes}.Validate()
-			if (err != nil) != tt.wantErr || (err != nil && !strings.Contains(err.Error(), "route name")) {
+			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v", err)
 			}
 		})
@@ -227,32 +230,101 @@ func runWithOptionsJSON(t *testing.T, body string) (runner.Options, bool, error)
 	return got, started, err
 }
 
+// A route name never stops start-up: bad or clashing names only log a warning.
 func TestRunWithRunnerRouteNames(t *testing.T) {
 	tests := []struct {
-		name    string
-		routes  string
-		wantErr bool
+		name   string
+		routes string
 	}{
-		{"old options without fragments", `["syslog+tcp://a:514","syslog+tcp://b:514","gelf://g:12201"]`, false},
-		{"named routes", `["syslog+tcp://a:514#primary","syslog+tcp://b:514#backup"]`, false},
-		{"duplicate explicit", `["syslog://a:514#x","gelf://g:1#x"]`, true},
-		{"explicit equals other default", `["syslog://a:514","gelf://g:1#syslog"]`, true},
-		{"invalid", `["syslog://a:514#a b"]`, true},
-		{"empty fragment", `["syslog://a:514#"]`, false},
+		{"old options without fragments", `["syslog+tcp://a:514","syslog+tcp://b:514","gelf://g:12201"]`},
+		{"named routes", `["syslog+tcp://a:514#primary","syslog+tcp://b:514#backup"]`},
+		{"duplicate explicit", `["syslog://a:514#x","gelf://g:1#x"]`},
+		{"explicit equals other default", `["syslog://a:514","gelf://g:1#syslog"]`},
+		{"invalid", `["syslog://a:514#a b"]`},
+		{"empty fragment", `["syslog://a:514#"]`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, started, err := runWithOptionsJSON(t, `{"routes":`+tt.routes+`}`)
-			if (err != nil) != tt.wantErr || (err != nil && !strings.Contains(err.Error(), "route name")) {
-				t.Fatalf("err = %v", err)
+			if err != nil || !started {
+				t.Fatalf("started = %v, err = %v", started, err)
 			}
-			if tt.wantErr && started {
-				t.Error("runner started despite invalid routes")
-			}
-			if !tt.wantErr && len(got.RouteURIs) == 0 {
+			if len(got.RouteURIs) == 0 {
 				t.Error("routes not passed on")
 			}
 		})
+	}
+}
+
+type nopAdapter struct{}
+
+func (nopAdapter) Stream(logstream chan *router.Message) {}
+
+type routeShape struct {
+	Name, Adapter, Address, Path, FilterName string
+	Options                                  map[string]string
+}
+
+// Routes with bad, duplicate or clashing #fragments are created exactly like
+// routes without fragments; only the name differs.
+func TestRouteNameProblemsDoNotChangeRoutes(t *testing.T) {
+	var captured []*router.Route
+	router.AdapterFactories.Unregister("lcap")
+	router.AdapterFactories.Register(func(r *router.Route) (router.LogAdapter, error) {
+		captured = append(captured, r)
+		return nopAdapter{}, nil
+	}, "lcap")
+	t.Cleanup(func() { router.AdapterFactories.Unregister("lcap") })
+	t.Setenv("ROUTESPATH", filepath.Join(t.TempDir(), "absent"))
+	router.SetProcessor(nil)
+
+	var logBuf strings.Builder
+	log.SetOutput(&logBuf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	run := func(routes string) []routeShape {
+		captured = nil
+		logBuf.Reset()
+		got, started, err := runWithOptionsJSON(t, `{"routes":`+routes+`}`)
+		if err != nil || !started {
+			t.Fatalf("started = %v, err = %v", started, err)
+		}
+		if err := router.Routes.SetupWithArgs(nil, got.RouteURIs); err != nil {
+			t.Fatalf("adding routes: %v", err)
+		}
+		if router.CurrentProcessor() != nil {
+			t.Error("processor installed")
+		}
+		var out []routeShape
+		for _, r := range captured {
+			out = append(out, routeShape{r.Name, r.Adapter, r.Address, r.Path, r.FilterName, r.Options})
+			go func(r *router.Route) { <-r.Closer() }(r)
+			router.Routes.Remove(r.ID)
+		}
+		return out
+	}
+
+	plain := run(`["lcap+udp://h:514?filter.name=web","lcap+udp://h:514?filter.name=web","lcap+tcp://i:514","lcap://j:1/p?a=b","lcap://k:1"]`)
+	odd := run(`["lcap+udp://h:514?filter.name=web#my logs","lcap+udp://h:514?filter.name=web#a/b","lcap+tcp://i:514#x","lcap://j:1/p?a=b#x","lcap://k:1#lcap"]`)
+	if len(plain) != 5 || len(odd) != 5 {
+		t.Fatalf("routes: %d without, %d with fragments", len(plain), len(odd))
+	}
+	for i := range plain {
+		// Names differ for the routes that got a valid fragment.
+		a, b := plain[i], odd[i]
+		a.Name, b.Name = "", ""
+		if !reflect.DeepEqual(a, b) {
+			t.Errorf("route %d: %+v, want %+v", i, odd[i], plain[i])
+		}
+	}
+	for _, want := range []string{`"a/b"`, `"my logs"`, `more than one route has the name "x"`, `more than one route has the name "lcap"`} {
+		if !strings.Contains(logBuf.String(), want) {
+			t.Errorf("log lacks %s:\n%s", want, logBuf.String())
+		}
+	}
+	// Invalid fragments are ignored: the route keeps its default name.
+	if odd[0].Name != "lcap" || odd[1].Name != "lcap" || odd[2].Name != "x" || odd[3].Name != "x" {
+		t.Errorf("names = %+v", odd)
 	}
 }
 
@@ -261,8 +333,8 @@ func TestRunWithRunnerRouteNameFromEnvOption(t *testing.T) {
 	_, started, err := runWithOptionsJSON(t, `{
 		"routes":["syslog://a:514#${MY_ROUTE}","gelf://g:1#dup"],
 		"env":[{"name":"MY_ROUTE","value":"dup"}]}`)
-	if err == nil && started {
-		t.Error("duplicate explicit name via env option was not detected by the launcher")
+	if err != nil || !started {
+		t.Errorf("started = %v, err = %v", started, err)
 	}
 }
 

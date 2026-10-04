@@ -89,7 +89,8 @@ func TestNamesFragmentEdgeCases(t *testing.T) {
 			t.Errorf("RouteName(%q) = %q, %v, %v", tt.uri, name, explicit, err)
 		}
 		rm := newNameTestManager()
-		if err := rm.AddFromURI(tt.uri); (err != nil) != tt.wantErr {
+		// An invalid name is only ignored by AddFromURI; an unparsable URI still fails.
+		if err := rm.AddFromURI(tt.uri); (err != nil) != (tt.uri == "gelf://h:1#%") {
 			t.Errorf("AddFromURI(%q) err = %v", tt.uri, err)
 		}
 	}
@@ -160,6 +161,9 @@ func TestNamesStoredRouteCollidingWithURIRouteDoesNotBreakStartup(t *testing.T) 
 	if err := rm.Load(store); err != nil {
 		t.Fatalf("Load failed, stored route would be lost and start-up aborted: %v", err)
 	}
+	if all, _ := rm.GetAll(); len(all) != 2 || !rm.AmbiguousName("syslog") {
+		t.Errorf("stored route not loaded or name not ambiguous: %d routes", len(all))
+	}
 }
 
 func TestNamesRoutesAPIAdd(t *testing.T) {
@@ -171,14 +175,19 @@ func TestNamesRoutesAPIAdd(t *testing.T) {
 	if err := rm.Add(&Route{Adapter: "syslog", Address: "b:1"}); err != nil {
 		t.Fatalf("second default route: %v", err)
 	}
-	if err := rm.Add(&Route{Adapter: "syslog", Address: "c:1", Name: "bad name"}); err == nil {
-		t.Error("invalid name accepted")
+	bad := &Route{ID: "bad", Adapter: "syslog", Address: "c:1", Name: "bad name", NameExplicit: true}
+	if err := rm.Add(bad); err != nil || bad.Name != "syslog" || bad.NameExplicit {
+		t.Errorf("invalid name: err = %v, route = %+v", err, bad)
 	}
+	rm.Remove("bad")
 	if err := rm.Add(&Route{Adapter: "syslog", Address: "c:1", Name: "x", NameExplicit: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := rm.Add(&Route{Adapter: "gelf", Address: "d:1", Name: "x", NameExplicit: true}); err == nil {
-		t.Error("duplicate explicit name accepted")
+	if err := rm.Add(&Route{Adapter: "gelf", Address: "d:1", Name: "x", NameExplicit: true}); err != nil {
+		t.Errorf("duplicate explicit name: %v", err)
+	}
+	if !rm.AmbiguousName("x") {
+		t.Error("duplicate explicit name is not ambiguous")
 	}
 	// Same ID replaces itself, also with the same explicit name.
 	if err := rm.Add(&Route{ID: "r1", Adapter: "syslog", Address: "e:1", Name: "y", NameExplicit: true}); err != nil {
@@ -188,8 +197,11 @@ func TestNamesRoutesAPIAdd(t *testing.T) {
 		t.Errorf("re-adding same id: %v", err)
 	}
 	// JSON API clients send name without name_explicit.
-	if err := rm.Add(&Route{Adapter: "gelf", Address: "f:1", Name: "y"}); err == nil {
-		t.Error("API route reusing an explicit name was accepted")
+	if err := rm.Add(&Route{Adapter: "gelf", Address: "f:1", Name: "y"}); err != nil {
+		t.Errorf("API route reusing a name: %v", err)
+	}
+	if !rm.AmbiguousName("y") {
+		t.Error("reused name is not ambiguous")
 	}
 }
 
@@ -214,22 +226,36 @@ func TestNamesConcurrentAddAndQuery(t *testing.T) {
 	}
 }
 
-func TestValidateRouteNamesEdgeCases(t *testing.T) {
+func TestAmbiguousRouteNamesEdgeCases(t *testing.T) {
 	t.Setenv("ROUTE_NAME_T", "dup")
-	if _, err := ValidateRouteNames([]string{"gelf://a:1#${ROUTE_NAME_T}", "syslog://b:1#dup"}); err == nil {
-		t.Error("env-expanded duplicate not detected")
+	if amb, err := AmbiguousRouteNames([]string{"gelf://a:1#${ROUTE_NAME_T}", "syslog://b:1#dup"}); err != nil || len(amb) != 1 || amb[0] != "dup" {
+		t.Errorf("env-expanded duplicate: %v %v", amb, err)
 	}
-	if amb, err := ValidateRouteNames(nil); err != nil || len(amb) != 0 {
+	if amb, err := AmbiguousRouteNames(nil); err != nil || len(amb) != 0 {
 		t.Errorf("%v %v", amb, err)
 	}
 	// default first, then explicit with same name, and the other order
 	for _, uris := range [][]string{{"syslog://a:1", "gelf://b:1#syslog"}, {"gelf://b:1#syslog", "syslog://a:1"}} {
-		if _, err := ValidateRouteNames(uris); err == nil {
-			t.Errorf("%v: no error", uris)
+		if amb, err := AmbiguousRouteNames(uris); err != nil || len(amb) != 1 || amb[0] != "syslog" {
+			t.Errorf("%v: %v %v", uris, amb, err)
 		}
 	}
-	amb, err := ValidateRouteNames([]string{"syslog://a:1", "syslog://b:1", "syslog://c:1", "gelf://d:1", "gelf://e:1"})
+	amb, err := AmbiguousRouteNames([]string{"syslog://a:1", "syslog://b:1", "syslog://c:1", "gelf://d:1", "gelf://e:1"})
 	if err != nil || len(amb) != 2 || amb[0] != "syslog" || amb[1] != "gelf" {
 		t.Errorf("ambiguous = %v, err = %v", amb, err)
+	}
+}
+
+func TestNamesLoadInvalidStoredNameFallsBackToDefault(t *testing.T) {
+	store := writeStoredRoutes(t, map[string]string{
+		"aaa.json": `{"id":"aaa","adapter":"syslog","address":"h1:514","name":"bad name","name_explicit":true}`,
+	})
+	rm := newNameTestManager()
+	if err := rm.Load(store); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	r, err := rm.Get("aaa")
+	if err != nil || r.Name != "syslog" || r.NameExplicit {
+		t.Errorf("%+v %v", r, err)
 	}
 }

@@ -434,7 +434,7 @@ func (s *Server) status(w http.ResponseWriter) {
 	}
 	routes := make([]routeStatus, 0, len(wt.Env.Routes))
 	for _, n := range wt.Env.Routes {
-		routes = append(routes, routeStatus{Name: n, Ambiguous: ambiguous[n], Rules: counts.Targets[n]})
+		routes = append(routes, routeStatus{Name: n, Ambiguous: ambiguous[n] || router.Routes.AmbiguousName(n), Rules: counts.Targets[n]})
 	}
 
 	summary := ""

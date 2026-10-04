@@ -207,3 +207,18 @@ func TestManagedKeysCleared(t *testing.T) {
 		}
 	}
 }
+
+// A route with an invalid fragment keeps its default name, and a rule file can target that name.
+func TestFileEnvInvalidFragmentUsesDefaultName(t *testing.T) {
+	config := Config{Routes: []string{"gelf://g:12201#my graylog", "syslog://s:514#a/b", "loki://l:1#ok"}}
+	env := fileEnv(config, "")
+	want := map[string]bool{"gelf": true, "syslog": true, "ok": true}
+	if len(env.Routes) != 3 || len(env.Ambiguous) != 0 {
+		t.Fatalf("env = %+v", env)
+	}
+	for _, n := range env.Routes {
+		if !want[n] {
+			t.Errorf("unexpected route name %q in %v", n, env.Routes)
+		}
+	}
+}

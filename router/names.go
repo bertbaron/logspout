@@ -36,7 +36,7 @@ func routeNameWithEnv(uri string, getenv func(string) string) (string, bool, err
 
 func nameFromURL(u *url.URL) (string, bool, error) {
 	if u.Fragment == "" {
-		return strings.Split(u.Scheme, "+")[0], false, nil
+		return defaultRouteName(u), false, nil
 	}
 	if !ValidRouteName(u.Fragment) {
 		return "", true, fmt.Errorf("invalid route name %q: use only letters, digits, '_', '.' and '-'", u.Fragment)
@@ -44,36 +44,53 @@ func nameFromURL(u *url.URL) (string, bool, error) {
 	return u.Fragment, true, nil
 }
 
-// ValidateRouteNames checks the route names of a list of URIs. A duplicate
-// explicit name is an error. Duplicate default names (adapter types) are
-// returned in ambiguous; they stay allowed for backward compatibility.
-func ValidateRouteNames(uris []string) (ambiguous []string, err error) {
-	return ValidateRouteNamesWithEnv(uris, os.Getenv)
+func defaultRouteName(u *url.URL) string {
+	return strings.Split(u.Scheme, "+")[0]
 }
 
-// ValidateRouteNamesWithEnv is like ValidateRouteNames but expands ${VAR}
+// effectiveName is the name a route gets: a valid fragment, else the default
+// name. invalid is set when a fragment was ignored. Before route names existed
+// a fragment was ignored, so a bad one must not stop a route.
+func effectiveName(u *url.URL) (name string, explicit bool, invalid error) {
+	name, explicit, err := nameFromURL(u)
+	if err != nil {
+		return defaultRouteName(u), false, err
+	}
+	return name, explicit, nil
+}
+
+// EffectiveRouteNameWithEnv is the name that AddFromURI gives the route of
+// uri, after expanding ${VAR} with getenv. Only an unparsable URI gives an error.
+func EffectiveRouteNameWithEnv(uri string, getenv func(string) string) (string, error) {
+	u, err := url.Parse(os.Expand(uri, getenv))
+	if err != nil {
+		return "", err
+	}
+	name, _, _ := effectiveName(u)
+	return name, nil
+}
+
+// AmbiguousRouteNames returns the names that more than one route of the URIs
+// has. Such a name cannot be a target in the rule file. It never fails because
+// of a name; only a URI that cannot be parsed gives an error.
+func AmbiguousRouteNames(uris []string) ([]string, error) {
+	return AmbiguousRouteNamesWithEnv(uris, os.Getenv)
+}
+
+// AmbiguousRouteNamesWithEnv is like AmbiguousRouteNames but expands ${VAR}
 // in the URIs with getenv, so callers can match the environment that will
 // be in place when the routes are added.
-func ValidateRouteNamesWithEnv(uris []string, getenv func(string) string) (ambiguous []string, err error) {
-	explicitCount := map[string]int{}
-	defaultCount := map[string]int{}
-	var order []string
+func AmbiguousRouteNamesWithEnv(uris []string, getenv func(string) string) ([]string, error) {
+	count := map[string]int{}
+	var ambiguous []string
 	for i, uri := range uris {
-		name, explicit, err := routeNameWithEnv(uri, getenv)
+		name, err := EffectiveRouteNameWithEnv(uri, getenv)
 		if err != nil {
 			return nil, fmt.Errorf("routes[%d]: %w", i, err)
 		}
-		if explicit {
-			explicitCount[name]++
-		} else {
-			if defaultCount[name] == 1 {
-				order = append(order, name)
-			}
-			defaultCount[name]++
-		}
-		if explicitCount[name] > 1 || (explicitCount[name] > 0 && defaultCount[name] > 0) {
-			return nil, fmt.Errorf("routes[%d]: route name %q is used more than once, add a unique #name to the route URI", i, name)
+		if count[name]++; count[name] == 2 {
+			ambiguous = append(ambiguous, name)
 		}
 	}
-	return order, nil
+	return ambiguous, nil
 }
