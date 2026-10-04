@@ -96,11 +96,14 @@ func TestLiveChurnWithReloadAndPump(t *testing.T) {
 			if i%2 == 0 {
 				q = "?show_dropped=true"
 			}
-			ws, err := l.dial(q)
-			// The server frees a slot a moment after the client closed.
-			for try := 0; err != nil && try < 200; try++ {
+			// The server frees a slot a moment after the client closed: retry a 503.
+			var ws *websocket.Conn
+			var err error
+			for try := 0; try < 200; try++ {
+				if ws, err = l.dial(q); err == nil {
+					break
+				}
 				time.Sleep(5 * time.Millisecond)
-				ws, err = l.dial(q)
 			}
 			if err != nil {
 				t.Errorf("dial: %v", err)
@@ -123,7 +126,7 @@ func TestLiveChurnWithReloadAndPump(t *testing.T) {
 		t.Fatal("nothing pumped")
 	}
 
-	waitFor(t, func() bool { return h.nlive.Load() == 0 })
+	waitFor(t, func() bool { return h.nlive.Load() == 0 && h.slots.Load() == 0 })
 	h.mu.RLock()
 	n := len(h.clients)
 	h.mu.RUnlock()
@@ -178,6 +181,7 @@ func TestServerCloseTwiceAndWithLiveClientsMidWrite(t *testing.T) {
 	if n := l.srv.samples().nlive.Load(); n != 0 {
 		t.Errorf("nlive %d after Close", n)
 	}
+	waitFor(t, func() bool { return l.srv.samples().slots.Load() == 0 })
 	if _, err := l.dial(""); err == nil {
 		t.Error("dial works after Close")
 	}

@@ -189,3 +189,22 @@ func TestServeErrorRemovesTap(t *testing.T) {
 		t.Error("tap still installed after Serve failed")
 	}
 }
+
+// A handshake that fails after the slot was reserved must free the slot.
+func TestLiveFailedHandshakeFreesSlot(t *testing.T) {
+	l := startLive(t, "127.0.0.1")
+	h := l.srv.samples()
+	for i := 0; i < 2*maxLiveClients; i++ {
+		conn, err := net.Dial("tcp", l.addr)
+		must(t, err)
+		io.WriteString(conn, "GET /api/live HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 99\r\nOrigin: http://x\r\n\r\n")
+		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		io.Copy(io.Discard, conn) // the server answers and closes
+		conn.Close()
+	}
+	waitFor(t, func() bool { return h.slots.Load() == 0 })
+	if h.nlive.Load() != 0 {
+		t.Errorf("nlive %d", h.nlive.Load())
+	}
+	l.connect(t, "") // still room
+}

@@ -110,6 +110,7 @@ type hub struct {
 	routes func() []string // route names, for the target traces
 	ring   ring
 
+	slots   atomic.Int32 // clients that passed the cap check, also while still in the handshake
 	nlive   atomic.Int32 // number of clients, so the pumps skip the trace when 0
 	mu      sync.RWMutex
 	clients map[*client]struct{}
@@ -195,6 +196,7 @@ func (h *hub) Observe(m *router.Message, p router.Processor) {
 func (h *hub) add(c *client) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	// The cap is a backstop: reserve() is the real limit.
 	if h.closed || len(h.clients) >= maxLiveClients {
 		return false
 	}
@@ -229,3 +231,18 @@ func (h *hub) closeAll() {
 		c.stop()
 	}
 }
+
+// reserve takes a client slot before the upgrade, so that an over-cap client gets a 503.
+func (h *hub) reserve() bool {
+	for {
+		n := h.slots.Load()
+		if n >= maxLiveClients {
+			return false
+		}
+		if h.slots.CompareAndSwap(n, n+1) {
+			return true
+		}
+	}
+}
+
+func (h *hub) release() { h.slots.Add(-1) }

@@ -33,8 +33,6 @@ const (
 	maxBody = 6*pipeline.MaxFileSize + 4096
 )
 
-const placeholder = "Logspout rules editor: the web interface is not installed yet. The API is available under api/.\n"
-
 // Server is the ingress HTTP handler and listener.
 type Server struct {
 	// Watcher owns the rule file. Its Path, Env and Base are used; the path never comes from a request.
@@ -147,14 +145,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
+	if a, ok := assets[r.URL.Path]; ok {
+		serveAsset(w, r, a)
+		return
+	}
 	switch r.URL.Path {
-	case "/":
-		if !methodIs(w, r, http.MethodGet, http.MethodHead) {
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		fmt.Fprint(w, placeholder)
 	case "/api/config":
 		switch r.Method {
 		case http.MethodGet:

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Logspout rules</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<div id="banner" class="banner" role="status" hidden>
+  <span id="banner-text"></span>
+  <button type="button" id="banner-switch"></button>
+</div>
+
+<nav class="tabs" role="tablist" aria-label="Views">
+  <button type="button" role="tab" id="tab-config" data-view="config" aria-controls="view-config" aria-selected="true">Config</button>
+  <button type="button" role="tab" id="tab-playground" data-view="playground" aria-controls="view-playground" aria-selected="false">Playground</button>
+  <button type="button" role="tab" id="tab-live" data-view="live" aria-controls="view-live" aria-selected="false">Live</button>
+</nav>
+
+<main>
+<section id="view-config" role="tabpanel" aria-labelledby="tab-config">
+  <p class="muted">Rule file: <code id="cfg-path">...</code> <span id="cfg-dirty" class="warn" hidden>unsaved changes</span></p>
+  <label for="cfg">Rules (YAML)</label>
+  <textarea id="cfg" spellcheck="false" rows="22" wrap="off"></textarea>
+  <div class="row">
+    <button type="button" id="cfg-validate">Validate</button>
+    <button type="button" id="cfg-save" disabled>Save</button>
+    <button type="button" id="cfg-reload">Reload from disk</button>
+  </div>
+  <div id="cfg-result" role="status"></div>
+  <h2>Status</h2>
+  <div id="status"></div>
+</section>
+
+<section id="view-playground" role="tabpanel" aria-labelledby="tab-playground" hidden>
+  <p class="muted">Runs the draft from the Config view over test messages. Nothing is saved or applied.</p>
+  <div class="row">
+    <button type="button" id="pg-samples">Load recent messages</button>
+    <span id="pg-count" class="muted"></span>
+  </div>
+  <label for="pg-lines">Extra messages (one per line)</label>
+  <textarea id="pg-lines" spellcheck="false" rows="5" wrap="off"></textarea>
+  <div class="row">
+    <label for="pg-container">Container for these lines</label>
+    <input id="pg-container" type="text" placeholder="addon_local_myaddon">
+    <button type="button" id="pg-run">Run</button>
+    <button type="button" id="pg-clear">Clear</button>
+  </div>
+  <div id="pg-msg" role="status"></div>
+  <div class="row">
+    <label><input type="checkbox" id="pg-changed"> Only changed</label>
+    <label><input type="checkbox" id="pg-dropped"> Only dropped</label>
+    <span id="pg-shown" class="muted"></span>
+  </div>
+  <div id="pg-results"></div>
+
+  <h2>Regex tester</h2>
+  <p class="muted">Uses the same engine as the rules (RE2). Only named groups, such as <code>(?P&lt;level&gt;\w+)</code>, are shown.</p>
+  <label for="rx-re">Regex</label>
+  <input id="rx-re" type="text" class="wide" spellcheck="false">
+  <label for="rx-text">Text</label>
+  <textarea id="rx-text" spellcheck="false" rows="3"></textarea>
+  <div class="row"><button type="button" id="rx-run">Test</button></div>
+  <div id="rx-result" role="status"></div>
+</section>
+
+<section id="view-live" role="tabpanel" aria-labelledby="tab-live" hidden>
+  <p class="muted">Messages as they pass through the active pipeline.</p>
+  <div class="row">
+    <label for="lv-container">Container (glob)</label>
+    <input id="lv-container" type="text" placeholder="addon_*">
+    <label><input type="checkbox" id="lv-dropped"> Show dropped</label>
+    <button type="button" id="lv-connect">Connect</button>
+    <button type="button" id="lv-pause" disabled>Pause</button>
+    <button type="button" id="lv-clear">Clear</button>
+  </div>
+  <div id="lv-msg" role="status"></div>
+  <div id="lv-list" class="live" tabindex="0" aria-label="Live messages"></div>
+</section>
+</main>
+</body>
+</html>

@@ -145,10 +145,11 @@ func (s *Server) live(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h := s.samples()
-	if h.nlive.Load() >= maxLiveClients {
+	if !h.reserve() {
 		writeError(w, http.StatusServiceUnavailable, fmt.Sprintf("at most %d live clients", maxLiveClients))
 		return
 	}
+	defer h.release()
 	c := &client{
 		container: glob,
 		showAll:   q.Get("show_dropped") == "true",

@@ -178,8 +178,8 @@ func TestRoutingAndHeaders(t *testing.T) {
 		}
 	}
 	rec := f.do("GET", "/", "")
-	if !strings.Contains(rec.Body.String(), "Logspout") || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/plain") {
-		t.Errorf("placeholder: %q %q", rec.Header().Get("Content-Type"), rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "<title>Logspout") || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") {
+		t.Errorf("index: %q %q", rec.Header().Get("Content-Type"), rec.Body.String())
 	}
 }
 
