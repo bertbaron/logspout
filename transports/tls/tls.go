@@ -6,10 +6,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/gliderlabs/logspout/adapters/raw"
 	"github.com/gliderlabs/logspout/router"
@@ -26,8 +26,11 @@ const (
 )
 
 var (
-	// package wide cache of TLS config
-	clientTLSConfig *tls.Config
+	// package wide cache of TLS config, created on first Dial because the
+	// environment is only complete after init() (the launcher sets it later)
+	clientTLSConfig    *tls.Config
+	clientTLSConfigErr error
+	clientTLSOnce      sync.Once
 	// PCI compliance as of Jun 30, 2018: anything under TLS 1.1 must be disabled
 	// we bump this up to TLS 1.2 so we can support best possible ciphers
 	hardenedMinVersion = uint16(tls.VersionTLS12)
@@ -62,14 +65,14 @@ func init() {
 	router.AdapterTransports.Register(new(tlsTransport), "tls")
 	// convenience adapters around raw adapter
 	router.AdapterFactories.Register(rawTLSAdapter, "tls")
+}
 
-	// we should load our TLS configuration only once
-	// since it is not expected to change during runtime
-	var err error
-	if clientTLSConfig, err = createTLSConfig(); err != nil {
-		// without a valid/desired TLS config, we should exit
-		log.Fatalf("error with TLSConfig: %s", err)
-	}
+// getClientTLSConfig loads the TLS configuration once, on first use.
+func getClientTLSConfig() (*tls.Config, error) {
+	clientTLSOnce.Do(func() {
+		clientTLSConfig, clientTLSConfigErr = createTLSConfig()
+	})
+	return clientTLSConfig, clientTLSConfigErr
 }
 
 func rawTLSAdapter(route *router.Route) (r router.LogAdapter, err error) {
@@ -79,15 +82,21 @@ func rawTLSAdapter(route *router.Route) (r router.LogAdapter, err error) {
 }
 
 func (t *tlsTransport) Dial(addr string, options map[string]string) (conn net.Conn, err error) {
+	tlsConfig, err := getClientTLSConfig()
+	if err != nil {
+		err = fmt.Errorf("error with TLSConfig: %w", err)
+		return
+	}
+
 	// at this point, if our trust store is empty, there is no point of continuing
 	// since it would be impossible to successfully validate any x509 server certificates
-	if clientTLSConfig.RootCAs != nil && len(clientTLSConfig.RootCAs.Subjects()) < 1 { //nolint:staticcheck
+	if tlsConfig.RootCAs != nil && len(tlsConfig.RootCAs.Subjects()) < 1 { //nolint:staticcheck
 		err = fmt.Errorf("FATAL: TLS CA trust store is empty! Can not trust any TLS endpoints: tls://%s", addr)
 		return
 	}
 
 	// attempt to establish the TLS connection
-	conn, err = tls.Dial("tcp", addr, clientTLSConfig)
+	conn, err = tls.Dial("tcp", addr, tlsConfig)
 	return
 }
 
