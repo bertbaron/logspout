@@ -6,6 +6,7 @@ package journal
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-systemd/v22/sdjournal"
@@ -20,6 +21,17 @@ const (
 	waitTimeout   = time.Second
 	// Docker writes its container logs through dockerd
 	dockerMatch = "_COMM=dockerd"
+)
+
+// startTime is taken at process start, so the first source also reads the
+// lines the app wrote before the journal was opened (like the startup banner).
+var startTime = time.Now()
+
+// lastCursor is the position of the last entry that was read. A reopened source
+// resumes after it, so no entries are lost or repeated.
+var (
+	cursorMu   sync.Mutex
+	lastCursor string
 )
 
 type source struct {
@@ -52,10 +64,32 @@ func prepare(j *sdjournal.Journal) error {
 	if err := j.SetDataThreshold(0); err != nil {
 		return err
 	}
+	cursorMu.Lock()
+	cursor := lastCursor
+	cursorMu.Unlock()
+	if cursor != "" {
+		return resume(j, cursor)
+	}
 	if cfg.GetEnvDefault("BACKLOG", "") == "true" {
 		return j.SeekHead()
 	}
-	return j.SeekRealtimeUsec(uint64(time.Now().UnixMicro()))
+	return j.SeekRealtimeUsec(uint64(startTime.UnixMicro()))
+}
+
+// resume positions the journal on the first entry after the cursor.
+func resume(j *sdjournal.Journal, cursor string) error {
+	if err := j.SeekCursor(cursor); err != nil {
+		return err
+	}
+	n, err := j.Next()
+	if err != nil {
+		return err
+	}
+	// The cursor entry itself was already delivered. It may be gone after rotation.
+	if n > 0 && j.TestCursor(cursor) != nil {
+		_, err = j.Previous()
+	}
+	return err
 }
 
 func journalDir() (string, error) {
@@ -83,6 +117,11 @@ func (s *source) Next() (*router.JournalEntry, error) {
 		entry, err := s.j.GetEntry()
 		if err != nil {
 			return nil, err
+		}
+		if cursor, err := s.j.GetCursor(); err == nil {
+			cursorMu.Lock()
+			lastCursor = cursor
+			cursorMu.Unlock()
 		}
 		return &router.JournalEntry{
 			Fields:   entry.Fields,
